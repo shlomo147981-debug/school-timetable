@@ -15,7 +15,8 @@ async function adoptHandedOverSession() {
   if (typeof location === 'undefined' || !location.hash.includes('rt=')) return;
   const h = new URLSearchParams(location.hash.slice(1));
   const access_token = h.get('at'), refresh_token = h.get('rt');
-  history.replaceState(null, '', location.pathname + location.search);
+  h.delete('at'); h.delete('rt');   // משאירים את מצב הניווט, מוחקים רק את הטוקנים
+  history.replaceState(history.state, '', location.pathname + location.search + (h.toString() ? `#${h}` : ''));
   if (access_token && refresh_token) {
     try { await getSupabase().auth.setSession({ access_token, refresh_token }); } catch { /* ignore */ }
   }

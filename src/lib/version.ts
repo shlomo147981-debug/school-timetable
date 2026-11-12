@@ -6,6 +6,7 @@ export const APP_COMMIT = process.env.NEXT_PUBLIC_APP_COMMIT ?? 'dev';
 /** כתובת הגרסה המקוונת (GitHub Pages) */
 /** מה חדש — מוצג בתפריט ⚙️ */
 export const RELEASE_NOTES: { version: string; notes: string[] }[] = [
+  { version: '1.2.1', notes: ['תיקון: מעבר בין לשוניות ותצוגות (הערות, בקשות, ניהול, יומי/חודשי) בגרסה המקוונת', 'כפתור "חזור" מחזיר למסך הקודם'] },
   { version: '1.2.0', notes: [
     'עריכת שיעור עם 4 היקפים: רק בתאריך הזה · רק השבוע · כל הימים · לכל השנה',
     'החלפה בפעילות מיוחדת: טיול / יום שיא / בחירה אישית (מלל חופשי)',
@@ -49,8 +50,10 @@ export async function fetchRemoteVersion(timeoutMs = 5000): Promise<RemoteVersio
  */
 export function goToRemote(tokens?: { access_token: string; refresh_token: string } | null, build?: number) {
   const url = new URL(REMOTE_APP_URL);
-  url.search = location.search;
   if (build) url.searchParams.set('v', String(build));
-  if (tokens) url.hash = `at=${encodeURIComponent(tokens.access_token)}&rt=${encodeURIComponent(tokens.refresh_token)}`;
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  hash.delete('at'); hash.delete('rt');
+  if (tokens) { hash.set('at', tokens.access_token); hash.set('rt', tokens.refresh_token); }
+  url.hash = hash.toString();
   location.replace(url.toString());
 }

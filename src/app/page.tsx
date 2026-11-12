@@ -1,9 +1,9 @@
 'use client';
 
-// אפליקציה בעמוד יחיד (SPA): כל המסכים תחת "/" עם ניווט בפרמטרים (?page=requests&view=month).
-// כך הייצוא הסטטי עובד גם ב-Capacitor, שמחזיר index.html לכל נתיב ללא סיומת.
+// אפליקציה בעמוד יחיד (SPA): כל המסכים תחת "/", ניווט ב-React State + hash (#page=requests&view=month).
+// בלי router של Next ובלי טעינה מחדש — עובד זהה ב-GitHub Pages (/school-timetable/) וב-Capacitor.
 import { Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { NavProvider, useNav } from '@/lib/nav';
 import { AuthProvider, useAuth } from '@/components/AuthProvider';
 import LoginScreen from '@/components/screens/LoginScreen';
 import AppShell from '@/components/screens/AppShell';
@@ -23,7 +23,7 @@ function Splash() {
 
 function AppRoot() {
   const { auth } = useAuth();
-  const params = useSearchParams();
+  const { params } = useNav();
   if (auth.status === 'loading') return <Splash />;
   if (auth.status === 'signed_out') return <LoginScreen initialError={auth.error} />;
 
@@ -43,11 +43,13 @@ function AppRoot() {
 export default function Page() {
   return (
     <OtaGate>
-      <AuthProvider>
-        <Suspense fallback={<Splash />}>
-          <AppRoot />
-        </Suspense>
-      </AuthProvider>
+      <NavProvider>
+        <AuthProvider>
+          <Suspense fallback={<Splash />}>
+            <AppRoot />
+          </Suspense>
+        </AuthProvider>
+      </NavProvider>
     </OtaGate>
   );
 }

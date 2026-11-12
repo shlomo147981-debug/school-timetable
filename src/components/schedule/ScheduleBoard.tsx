@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useNav } from '@/lib/nav';
 import type { Assignment, CalendarEvent, Occurrence, Person, Role, StudentEvent, View } from '@/lib/types';
 import { isStaff } from '@/lib/types';
 import { hhmm } from '@/lib/dates';
@@ -48,16 +48,10 @@ export default function ScheduleBoard(props: BoardProps) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [addFor, setAddFor] = useState<string | null>(null);
   const [toast, setToast] = useState('');
-  const router = useRouter();
-  const params = useSearchParams();
+  const { navigate } = useNav();
   const staff = isStaff(props.viewerRole) || props.canEditSchedule;
 
-  const openDay = (date: string) => {
-    const next = new URLSearchParams(params.toString());
-    next.set('view', 'day');
-    next.set('date', date);
-    router.push(`?${next.toString()}`);
-  };
+  const openDay = (date: string) => navigate({ view: 'day', date });
 
   const byKey = useMemo(() => new Map(props.occurrences.map((o) => [o.key, o])), [props.occurrences]);
   const pickedOccs = [...picked].map((k) => byKey.get(k)).filter((o): o is Occurrence => !!o);

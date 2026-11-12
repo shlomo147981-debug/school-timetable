@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { countNewNotes, logout } from '@/lib/api';
 import { getNotesSeen } from '@/lib/notesSeen';
+import { useNav } from '@/lib/nav';
 import type { Profile } from '@/lib/types';
 import { ROLE_LABEL, isStaff } from '@/lib/types';
 import VersionMenu from '../VersionMenu';
@@ -16,7 +16,9 @@ export default function AppShell({ profile, page, children }: { profile: Profile
   const [leaving, setLeaving] = useState(false);
   const [newNotes, setNewNotes] = useState(0);
   const staff = isStaff(profile.role) || profile.is_admin;
+  const { navigate } = useNav();
   const tab = (p: Page) => `btn-ghost ${page === p ? 'bg-brand-50 text-brand-700' : ''}`;
+  const go = (p: Page) => navigate({ page: p === 'schedule' ? null : p });
 
   // תג "הערות חדשות" — הערות שמורים אחרים הזינו מאז הצפייה האחרונה
   useEffect(() => {
@@ -31,17 +33,17 @@ export default function AppShell({ profile, page, children }: { profile: Profile
     <div className="min-h-screen">
       <header className="safe-top sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <Link href="/" className="text-lg font-bold text-brand-700">📅 מערכת שעות</Link>
+          <button type="button" onClick={() => go('schedule')} className="text-lg font-bold text-brand-700">📅 מערכת שעות</button>
           <nav className="flex flex-wrap gap-1 text-sm">
-            <Link href="/" className={tab('schedule')}>מערכת</Link>
+            <button type="button" onClick={() => go('schedule')} className={tab('schedule')} aria-current={page === 'schedule' ? 'page' : undefined}>מערכת</button>
             {staff && (
-              <Link href="/?page=notes" className={tab('notes')}>
+              <button type="button" onClick={() => go('notes')} className={tab('notes')} aria-current={page === 'notes' ? 'page' : undefined}>
                 הערות
                 {newNotes > 0 && <span className="ms-1 rounded-full bg-red-600 px-1.5 text-[11px] text-white">{newNotes}</span>}
-              </Link>
+              </button>
             )}
-            <Link href="/?page=requests" className={tab('requests')}>{staff ? 'בקשות תלמידים' : 'הבקשות שלי'}</Link>
-            {profile.is_admin && <Link href="/?page=admin" className={tab('admin')}>ניהול משתמשים</Link>}
+            <button type="button" onClick={() => go('requests')} className={tab('requests')} aria-current={page === 'requests' ? 'page' : undefined}>{staff ? 'בקשות תלמידים' : 'הבקשות שלי'}</button>
+            {profile.is_admin && <button type="button" onClick={() => go('admin')} className={tab('admin')} aria-current={page === 'admin' ? 'page' : undefined}>ניהול משתמשים</button>}
           </nav>
           <div className="ms-auto flex items-center gap-3 text-sm">
             <div className="text-end leading-tight">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useNav } from '@/lib/nav';
 import { getSupabase } from '@/lib/supabase/client';
 import { resolveContext, type ViewContext } from '@/lib/context';
 import { isValidISO, rangeFor, rangeTitle, toSchoolDay, todayISO } from '@/lib/dates';
@@ -20,7 +20,7 @@ interface Loaded {
 }
 
 export default function ScheduleScreen({ profile }: { profile: Profile }) {
-  const params = useSearchParams();
+  const { params } = useNav();
   const key = params.toString();
   const view: View = params.get('view') === 'day' || params.get('view') === 'month' ? (params.get('view') as View) : 'week';
   const rawDate = params.get('date') ?? undefined;

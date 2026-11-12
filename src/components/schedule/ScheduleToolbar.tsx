@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useNav } from '@/lib/nav';
 import { navigate, todayISO, toSchoolDay } from '@/lib/dates';
 import type { ClassRow, Person, Role, View } from '@/lib/types';
 import { isStaff } from '@/lib/types';
@@ -17,15 +17,8 @@ export default function ScheduleToolbar(props: {
   classId: string | null; className: string; studentId: string | null; scope: Scope;
   classes: ClassRow[]; students: Person[]; kids: Person[];
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
-
-  const go = (patch: Record<string, string | null>) => {
-    const next = new URLSearchParams(params.toString());
-    for (const [k, v] of Object.entries(patch)) (v === null || v === '' ? next.delete(k) : next.set(k, v));
-    router.push(`${pathname}?${next.toString()}`);
-  };
+  const nav = useNav();
+  const go = (patch: Record<string, string | null>) => nav.navigate(patch);
 
   return (
     <div className="card mb-4 flex flex-wrap items-center gap-3 p-3">
