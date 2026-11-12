@@ -8,3 +8,4 @@ next-env.d.ts
 # Android / mobile
 *.apk
 android/local.properties
+*.bundle
