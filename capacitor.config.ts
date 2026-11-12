@@ -1,44 +1,26 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 /**
- * ============================================================================
- *  כתובת השרת החיה של אפליקציית ה-Next.js
- * ============================================================================
- *  האפליקציה משתמשת ב-SSR, Middleware ו-Server Actions (התחברות עם עוגיות,
- *  שמירת הערות/משימות), ולכן אי אפשר לייצא אותה סטטית (output: 'export').
- *  מעטפת האנדרואיד טוענת את האתר החי בתוך WebView מקורי.
+ * האפליקציה ארוזה כקבצים סטטיים בתוך ה-APK (out/ ← next build עם output: 'export')
+ * ומדברת ישירות עם Supabase מהטלפון. אין צורך בשרת חיצוני.
  *
- *  👉 הדביקו כאן את כתובת ה-HTTPS של האתר (למשל אחרי פריסה ל-Vercel):
- *       const SERVER_URL = 'https://my-school.vercel.app';
- *     או העבירו בזמן build:  CAP_SERVER_URL=https://... npx cap sync android
- *
- *  אם הכתובת ריקה — האפליקציה תציג מסך הסבר מקומי (mobile-shell/index.html).
- *  לפיתוח מקומי מול המחשב שלכם: CAP_SERVER_URL=http://192.168.1.20:3000
- *  (cleartext מופעל אוטומטית רק לכתובות http).
- * ============================================================================
+ * פיתוח עם Live Reload (אופציונלי): הריצו `npm run dev` והגדירו
+ *   CAP_DEV_URL=http://<IP-של-המחשב>:3000 npx cap run android
  */
-const SERVER_URL = process.env.CAP_SERVER_URL ?? '';
-
-const isHttp = SERVER_URL.startsWith('http://');
+const devUrl = process.env.CAP_DEV_URL;
 
 const config: CapacitorConfig = {
   appId: 'il.school.timetable',
   appName: 'מערכת שעות',
-  webDir: 'mobile-shell',
+  webDir: 'out',
   backgroundColor: '#f8fafc',
-  server: SERVER_URL
-    ? {
-        url: SERVER_URL,
-        cleartext: isHttp,
-        // דף שיוצג אם אין רשת / השרת לא זמין (מתוך mobile-shell)
-        errorPath: 'offline.html',
-        allowNavigation: [new URL(SERVER_URL).host, '*.supabase.co'],
-      }
+  server: devUrl
+    ? { url: devUrl, cleartext: devUrl.startsWith('http://') }
     : { androidScheme: 'https' },
   android: {
     allowMixedContent: false,
     captureInput: true,
-    webContentsDebuggingEnabled: isHttp, // דיבאג ב-chrome://inspect רק בפיתוח מקומי
+    webContentsDebuggingEnabled: !!devUrl,
   },
   plugins: {
     StatusBar: {

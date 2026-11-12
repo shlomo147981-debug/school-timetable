@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
 import Modal from '../ui/Modal';
-import { addAssignment, changeLesson, reportException } from '@/app/actions/lesson';
+import { addAssignment, changeLesson, reportException } from '@/lib/api';
 import { heDate, hhmm } from '@/lib/dates';
 import type { AssignmentType, ExceptionType, LessonChangeKind, Occurrence, Person } from '@/lib/types';
 import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL } from '@/lib/types';
@@ -21,12 +20,11 @@ const EXCEPTION_ICONS: Record<ExceptionType, string> = {
  *  3. (מחנך בלבד) שינוי מערכת למופע הזה: ביטול, מחליף, הזזה, חדר
  */
 export default function TeacherQuickModal({
-  occurrence: occ, classId, students, preselectedStudentId, teachers, canEditSchedule, onClose,
+  occurrence: occ, classId, students, preselectedStudentId, teachers, canEditSchedule, onChanged, onClose,
 }: {
   occurrence: Occurrence; classId: string; students: Person[]; preselectedStudentId: string | null;
-  teachers: Person[]; canEditSchedule: boolean; onClose: () => void;
+  teachers: Person[]; canEditSchedule: boolean; onChanged: () => void; onClose: () => void;
 }) {
-  const router = useRouter();
   const [tab, setTab] = useState<Tab>('exception');
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -52,7 +50,7 @@ export default function TeacherQuickModal({
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>, success: string, reset?: () => void) =>
     start(async () => {
       const r = await fn();
-      if (r.ok) { setMsg({ ok: true, text: success }); reset?.(); router.refresh(); }
+      if (r.ok) { setMsg({ ok: true, text: success }); reset?.(); onChanged(); }
       else setMsg({ ok: false, text: r.error ?? 'שגיאה' });
     });
 

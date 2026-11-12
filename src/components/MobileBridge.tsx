@@ -17,7 +17,7 @@ export default function MobileBridge() {
     const sub = App.addListener('backButton', ({ canGoBack }) => {
       const openDialog = document.querySelector<HTMLDialogElement>('dialog[open]');
       if (openDialog) openDialog.close();
-      else if (canGoBack && location.pathname !== '/schedule' && location.pathname !== '/login') history.back();
+      else if (canGoBack) history.back();
       else App.exitApp();
     });
     return () => { sub.then((s) => s.remove()); };

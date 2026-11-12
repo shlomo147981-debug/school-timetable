@@ -1,22 +1,16 @@
-# בונה app-debug.apk בכל push ל-main (או ידנית מלשונית Actions → Run workflow).
-# הגדרה חד-פעמית: Settings → Secrets and variables → Actions → Variables
-#   CAP_SERVER_URL = https://your-app.vercel.app   (כתובת השרת החיה)
+# בונה app-debug.apk עצמאי בכל push ל-main (או ידנית: Actions → Run workflow).
+# האפליקציה ארוזה סטטית בתוך ה-APK ומדברת ישירות עם Supabase.
+# הכתובת והמפתח הציבורי נקראים מ-.env.production (ציבוריים בלבד).
 name: Android APK
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      server_url:
-        description: 'כתובת השרת (אופציונלי, עוקף את משתנה CAP_SERVER_URL)'
-        required: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      CAP_SERVER_URL: ${{ inputs.server_url || vars.CAP_SERVER_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +29,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Sync Capacitor (מטמיע את כתובת השרת ב-APK)
+      - name: Static export (out/)
+        run: npm run build
+
+      - name: Sync Capacitor
         run: npx cap sync android
 
       - name: Build debug APK

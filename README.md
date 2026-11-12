@@ -3,40 +3,41 @@
 ## הפעלה
 ```bash
 npm install
-cp .env.example .env.local   # למלא URL + anon key (+ service role לסקריפט seed בלבד)
-supabase db push             # או להריץ את supabase/migrations/*.sql לפי הסדר ב-SQL Editor
+cp .env.example .env.local   # מפתח service role — לסקריפט seed בלבד
+# supabase/SETUP_ALL.sql → להדביק ב-Supabase SQL Editor
 npm run seed                 # משתמשי דמו (אופציונלי)
-npm run dev
+npm run dev                  # http://localhost:3000
 ```
-**כניסה:** מזהה משתמש + סיסמה. מאחורי הקלעים `t200` ממופה ל-`t200@school.local` ב-Supabase Auth,
-כך שאין צורך באימייל אמיתי. המשתמשים נוצרים רק ע"י מנהל (service role). אין הרשמה עצמית.
-בהגדרות Auth של הפרויקט יש לכבות את Signups.
+הכתובת והמפתח **הציבורי** של Supabase נמצאים ב-`.env.production` (ציבוריים ממילא — נצרבים לאפליקציה).
+**כניסה:** מזהה משתמש + סיסמה (`t200` ← `t200@school.local` ב-Supabase Auth). אין הרשמה עצמית.
 
-## ארכיטקטורה
+## ארכיטקטורה — אפליקציה סטטית ללא שרת
+* `next build` מייצר אתר סטטי ב-`out/` (`output: 'export'`). אין SSR, Middleware או Server Actions.
+* כל הקריאות והכתיבות נעשות **מהלקוח ישירות ל-Supabase** עם המפתח הציבורי + ה-JWT של המשתמש.
+  האבטחה כולה ב-RLS (ראו למטה) — הקוד בלקוח לא "סומך" על עצמו.
+* **עמוד יחיד** (`/`), ניווט בפרמטרים: `/?page=requests`, `/?view=month&date=2026-11-10&child=…`.
+  כך זה עובד גם בתוך Capacitor, שמחזיר `index.html` לכל נתיב ללא סיומת.
+* הסשן נשמר ב-`localStorage` ומתרענן אוטומטית.
+
 ```
-supabase/migrations/
-  0001_schema.sql        טבלאות, enums, טריגרים (סטטוס ברירת מחדל, הכרעה בבקשה)
-  0002_rls.sql           כל מדיניות ה-RLS + פונקציות עזר בסכמת private + Storage
-scripts/seed.mjs         נתוני דמו
+supabase/migrations/     0001_schema.sql, 0002_rls.sql  (+ SETUP_ALL.sql מאוחד)
+supabase/tests/          rls_scenarios.sql
+scripts/seed.mjs         נתוני דמו (service role)
 src/
-  middleware.ts          רענון סשן + הפניה ל-/login
+  app/page.tsx           נקודת כניסה: AuthProvider → Login / Schedule / Requests
   lib/
-    supabase/{server,client}.ts
-    auth.ts              requireProfile()
+    supabase/client.ts   לקוח Supabase יחיד (דפדפן / WebView)
+    api.ts               login, reportException, addAssignment, changeLesson, submitRequest, resolveRequest
     context.ts           "מה מוצג" לפי תפקיד (כיתה / תלמיד / ילד נבחר)
-    loadSchedule.ts      שאילתות (כולן כפופות ל-RLS)
-    schedule.ts          תבנית שבועית → מופעים בתאריכים + החלת שינויים/חופשות
-    dates.ts             ראשון–חמישי, גריד חודשי, ניווט
-    types.ts             טיפוסים + תוויות בעברית
-  app/
-    login/               מסך כניסה
-    (app)/schedule/      מסך מערכת (בורר יומי/שבועי/חודשי)
-    (app)/requests/      תיבת בקשות (מורה: אישור/דחייה; תלמיד/הורה: מעקב)
-    actions/             Server Actions: login, reportException, addAssignment,
-                         changeLesson, submitRequest, resolveRequest
+    loadSchedule.ts      שאילתות (כפופות ל-RLS)
+    schedule.ts          תבנית שבועית → מופעים + שינויים/חופשות
+    dates.ts, types.ts
   components/
+    AuthProvider.tsx, MobileBridge.tsx
+    screens/             LoginScreen, AppShell, ScheduleScreen, RequestsScreen
     schedule/            Toolbar, Board, DayView, WeekView, MonthView, LessonCard
     modals/              TeacherQuickModal (הערה / משימה / שינוי מערכת), RequestModal
+android/                 פרויקט Capacitor
 ```
 
 ## הרחבות לסכמה מה-PRD (והסיבה)
@@ -71,21 +72,15 @@ select count(*) from student_events where student_id not in (select student_id f
 rollback;
 ```
 
-## אפליקציית אנדרואיד (Capacitor)
-האפליקציה משתמשת ב-SSR / Middleware / Server Actions, ולכן **אין ייצוא סטטי**.
-מעטפת האנדרואיד היא WebView מקורי שטוען את השרת החי (`server.url`).
+## אפליקציית אנדרואיד (Capacitor) — עצמאית
+ה-APK מכיל את כל האפליקציה (`out/`) ומדבר ישירות עם Supabase מהטלפון. אין שרת.
 
-1. פרסו את אתר ה-Next.js (למשל Vercel) וקבלו כתובת HTTPS.
-2. הדביקו אותה ב-`capacitor.config.ts` (`SERVER_URL`) או העבירו `CAP_SERVER_URL`.
-3. בנייה מקומית (דורש JDK 21 + Android SDK, `ANDROID_HOME`):
-   ```bash
-   CAP_SERVER_URL=https://my-school.vercel.app npm run android:apk
-   ```
-   הפלט: `android/app/build/outputs/apk/debug/app-debug.apk`
-4. או בענן: `.github/workflows/android-apk.yml` — הגדירו משתנה ריפו `CAP_SERVER_URL`,
-   ו-APK יופיע תחת Actions → Artifacts אחרי כל push ל-main.
+```bash
+npm run android:apk    # next build → cap sync → gradlew assembleDebug
+```
+פלט: `android/app/build/outputs/apk/debug/app-debug.apk` (דורש JDK 21 + Android SDK ו-`ANDROID_HOME`).
 
-* ללא כתובת שרת: האפליקציה מציגה מסך הסבר (`mobile-shell/index.html`).
-* ללא רשת: `mobile-shell/offline.html`.
+* בענן: `.github/workflows/android-apk.yml` בונה APK בכל push ל-main → Actions → Artifacts.
+* Live reload בפיתוח: `CAP_DEV_URL=http://<IP>:3000 npx cap run android`.
 * אייקון: `resources/icon.svg` → `npm run android:icons`.
-* כפתור "חזור" של אנדרואיד: סוגר מודאל → חוזר אחורה → יוצא (`src/components/MobileBridge.tsx`).
+* כפתור "חזור": סוגר מודאל → חוזר אחורה → יוצא (`src/components/MobileBridge.tsx`).

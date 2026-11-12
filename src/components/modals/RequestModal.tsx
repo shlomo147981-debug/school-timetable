@@ -1,19 +1,17 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
 import Modal from '../ui/Modal';
-import { submitRequest } from '@/app/actions/lesson';
-import { createClient } from '@/lib/supabase/client';
+import { submitRequest } from '@/lib/api';
+import { getSupabase } from '@/lib/supabase/client';
 import { heDate, hhmm } from '@/lib/dates';
 import type { Occurrence, RequestKind } from '@/lib/types';
 import { ASSIGNMENT_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL, REQUEST_KIND_LABEL } from '@/lib/types';
 
 /** תלמיד/הורה: צפייה בפרטי השיעור + שליחת בקשה ישירה למורה */
 export default function RequestModal({
-  occurrence: occ, studentId, onClose,
-}: { occurrence: Occurrence; studentId: string; onClose: () => void }) {
-  const router = useRouter();
+  occurrence: occ, studentId, onChanged, onClose,
+}: { occurrence: Occurrence; studentId: string; onChanged: () => void; onClose: () => void }) {
   const [pending, start] = useTransition();
   const events = occ.events.filter((e) => !e.retracted);
   const [eventId, setEventId] = useState<string>(events[0]?.id ?? '');
@@ -30,7 +28,7 @@ export default function RequestModal({
       if (file) {
         // נתיב מתחיל ב-studentId — נאכף ע"י מדיניות ה-Storage
         const path = `${studentId}/${crypto.randomUUID()}-${file.name.replace(/[^\w.\-]/g, '_')}`;
-        const { error } = await createClient().storage.from('request-attachments').upload(path, file);
+        const { error } = await getSupabase().storage.from('request-attachments').upload(path, file);
         if (error) { setMsg({ ok: false, text: 'העלאת הקובץ נכשלה' }); return; }
         attachmentPath = path;
       }
@@ -38,7 +36,7 @@ export default function RequestModal({
         studentId, teacherId: occ.teacherId, kind, message, eventId: eventId || null,
         lessonId: occ.lesson.id, lessonDate: occ.date, attachmentPath,
       });
-      if (r.ok) { setMsg({ ok: true, text: 'הבקשה נשלחה למורה' }); setMessage(''); setFile(null); router.refresh(); }
+      if (r.ok) { setMsg({ ok: true, text: 'הבקשה נשלחה למורה' }); setMessage(''); setFile(null); onChanged(); }
       else setMsg({ ok: false, text: r.error });
     });
 

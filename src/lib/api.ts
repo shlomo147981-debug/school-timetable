@@ -1,54 +1,77 @@
-'use server';
+// פעולות כתיבה — ישירות מהלקוח מול Supabase (במקום Server Actions).
+// כל פעולה רצה עם ה-JWT של המשתמש המחובר, ולכן כפופה במלואה ל-RLS.
+import { getSupabase } from './supabase/client';
+import type { AssignmentType, ExceptionType, LessonChangeKind, Profile, RequestKind } from './types';
 
-// Server Actions — עוברים דרך הלקוח של המשתמש המחובר (anon key + JWT),
-// ולכן כל פעולה כפופה ל-RLS. הבדיקות כאן הן לנוחות/הודעות שגיאה בלבד.
-import { revalidatePath } from 'next/cache';
-import { createClient } from '@/lib/supabase/server';
-import type { AssignmentType, ExceptionType, LessonChangeKind, RequestKind } from '@/lib/types';
-
-type Result = { ok: true } | { ok: false; error: string };
-
+export type Result = { ok: true } | { ok: false; error: string };
 const fail = (error: string): Result => ({ ok: false, error });
-const done = (): Result => { revalidatePath('/schedule'); revalidatePath('/requests'); return { ok: true }; };
+const ok = (): Result => ({ ok: true });
+
+/** מזהה משתמש ייחודי -> אימייל פנימי ב-Supabase Auth */
+const toEmail = (username: string) =>
+  `${username.trim().toLowerCase()}@${process.env.NEXT_PUBLIC_LOGIN_DOMAIN ?? 'school.local'}`;
+
+async function currentUserId() {
+  const { data } = await getSupabase().auth.getSession();
+  return data.session?.user.id ?? null;
+}
+
+export async function login(username: string, password: string): Promise<Result> {
+  if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username.trim()) || !password) {
+    return fail('יש להזין מזהה משתמש וסיסמה תקינים');
+  }
+  const { error } = await getSupabase().auth.signInWithPassword({ email: toEmail(username), password });
+  if (!error) return ok();
+  return fail(/fetch|network/i.test(error.message) ? 'אין חיבור לאינטרנט' : 'מזהה משתמש או סיסמה שגויים');
+}
+
+export async function logout() {
+  await getSupabase().auth.signOut();
+}
+
+export async function fetchMyProfile(userId: string): Promise<Profile | null> {
+  const { data } = await getSupabase()
+    .from('profiles')
+    .select('id, username, full_name, role, class_id')
+    .eq('id', userId)
+    .maybeSingle<Profile>();
+  return data ?? null;
+}
 
 export async function reportException(input: {
   lessonId: string; lessonDate: string; studentIds: string[]; type: ExceptionType; note?: string;
 }): Promise<Result> {
   if (!input.studentIds.length) return fail('יש לבחור לפחות תלמיד אחד');
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return fail('לא מחובר');
-
+  const uid = await currentUserId();
+  if (!uid) return fail('לא מחובר');
   const rows = input.studentIds.map((student_id) => ({
     lesson_id: input.lessonId,
     lesson_date: input.lessonDate,
     student_id,
-    reporter_id: user.id,
+    reporter_id: uid,
     type: input.type,
     note: input.note?.trim() || null,
   }));
-  const { error } = await supabase.from('student_events').insert(rows);
-  return error ? fail('אין הרשאה לדווח על שיעור זה') : done();
+  const { error } = await getSupabase().from('student_events').insert(rows);
+  return error ? fail('אין הרשאה לדווח על שיעור זה') : ok();
 }
 
 export async function addAssignment(input: {
   lessonId: string; classId: string; type: AssignmentType; title: string; dueDate: string; description?: string;
 }): Promise<Result> {
   if (!input.title.trim()) return fail('יש להזין כותרת');
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return fail('לא מחובר');
-
-  const { error } = await supabase.from('assignments').insert({
+  const uid = await currentUserId();
+  if (!uid) return fail('לא מחובר');
+  const { error } = await getSupabase().from('assignments').insert({
     lesson_id: input.lessonId,
     class_id: input.classId,
     type: input.type,
     title: input.title.trim(),
     due_date: input.dueDate,
     description: input.description?.trim() || null,
-    created_by: user.id,
+    created_by: uid,
   });
-  return error ? fail('אין הרשאה להוסיף משימה לשיעור זה') : done();
+  return error ? fail('אין הרשאה להוסיף משימה לשיעור זה') : ok();
 }
 
 /** מחנך בלבד (נאכף ב-RLS): ביטול / מחליף / הזזה / חדר למופע ספציפי */
@@ -56,11 +79,11 @@ export async function changeLesson(input: {
   lessonId: string; date: string; kind: LessonChangeKind | 'restore';
   substituteId?: string; newStart?: string; newEnd?: string; newRoom?: string; note?: string;
 }): Promise<Result> {
-  const supabase = await createClient();
+  const supabase = getSupabase();
   if (input.kind === 'restore') {
     const { error } = await supabase.from('lesson_changes')
       .delete().eq('lesson_id', input.lessonId).eq('change_date', input.date);
-    return error ? fail(error.message) : done();
+    return error ? fail(error.message) : ok();
   }
   if (input.kind === 'substitute' && !input.substituteId) return fail('יש לבחור מורה מחליף');
   const { error } = await supabase.from('lesson_changes').upsert(
@@ -76,7 +99,7 @@ export async function changeLesson(input: {
     },
     { onConflict: 'lesson_id,change_date' },
   );
-  return error ? fail('רק מחנך/ת הכיתה רשאי/ת לשנות את המערכת') : done();
+  return error ? fail('רק מחנך/ת הכיתה רשאי/ת לשנות את המערכת') : ok();
 }
 
 export async function submitRequest(input: {
@@ -84,13 +107,11 @@ export async function submitRequest(input: {
   eventId?: string | null; lessonId?: string; lessonDate?: string; attachmentPath?: string | null;
 }): Promise<Result> {
   if (!input.message.trim()) return fail('יש לכתוב הודעה למורה');
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return fail('לא מחובר');
-
-  const { error } = await supabase.from('student_requests').insert({
+  const uid = await currentUserId();
+  if (!uid) return fail('לא מחובר');
+  const { error } = await getSupabase().from('student_requests').insert({
     student_id: input.studentId,
-    created_by: user.id,
+    created_by: uid,
     teacher_id: input.teacherId,
     kind: input.kind,
     message: input.message.trim(),
@@ -99,19 +120,18 @@ export async function submitRequest(input: {
     lesson_date: input.lessonDate ?? null,
     attachment_path: input.attachmentPath ?? null,
   });
-  return error ? fail('שליחת הבקשה נכשלה') : done();
+  return error ? fail('שליחת הבקשה נכשלה') : ok();
 }
 
 export async function resolveRequest(input: {
   requestId: string; status: 'approved' | 'rejected'; response?: string;
 }): Promise<Result> {
-  const supabase = await createClient();
-  const { error, count } = await supabase
+  const { error, count } = await getSupabase()
     .from('student_requests')
     .update({ status: input.status, response: input.response?.trim() || null }, { count: 'exact' })
     .eq('id', input.requestId)
     .eq('status', 'open');
   if (error) return fail(error.message);
   if (!count) return fail('הבקשה לא נמצאה או שכבר טופלה');
-  return done();
+  return ok();
 }

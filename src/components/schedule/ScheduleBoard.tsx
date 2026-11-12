@@ -24,6 +24,8 @@ export interface BoardProps {
   students: Person[];
   teachers: Person[];
   canEditSchedule: boolean;
+  /** נקרא אחרי שמירה — טוען מחדש את הנתונים */
+  onChanged: () => void;
 }
 
 export default function ScheduleBoard(props: BoardProps) {
@@ -60,11 +62,12 @@ export default function ScheduleBoard(props: BoardProps) {
           preselectedStudentId={props.studentId}
           teachers={props.teachers}
           canEditSchedule={props.canEditSchedule}
+          onChanged={props.onChanged}
           onClose={() => setSelected(null)}
         />
       )}
       {selected && !staff && props.studentId && (
-        <RequestModal occurrence={selected} studentId={props.studentId} onClose={() => setSelected(null)} />
+        <RequestModal occurrence={selected} studentId={props.studentId} onChanged={props.onChanged} onClose={() => setSelected(null)} />
       )}
     </>
   );
