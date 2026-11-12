@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { login } from '@/lib/api';
+import { APP_VERSION, isRemoteCopy } from '@/lib/version';
 
 export default function LoginScreen({ initialError }: { initialError?: string }) {
   const [error, setError] = useState(initialError ?? '');
@@ -39,6 +40,9 @@ export default function LoginScreen({ initialError }: { initialError?: string })
           {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
           <button type="submit" className="btn-primary w-full" disabled={pending}>{pending ? 'מתחבר…' : 'כניסה'}</button>
         </form>
+        <p className="mt-4 text-center text-xs text-slate-400" suppressHydrationWarning>
+          גרסה {APP_VERSION}{typeof window !== 'undefined' && isRemoteCopy() ? ' · מקוונת' : ''}
+        </p>
       </div>
     </main>
   );

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { APP_BUILD, APP_COMMIT, APP_VERSION, buildDate, fetchRemoteVersion, goToRemote, isRemoteCopy, type RemoteVersion } from '@/lib/version';
+import { APP_BUILD, APP_COMMIT, APP_VERSION, RELEASE_NOTES, buildDate, fetchRemoteVersion, goToRemote, isRemoteCopy, type RemoteVersion } from '@/lib/version';
 import { getSupabase } from '@/lib/supabase/client';
 import Modal from './ui/Modal';
 
@@ -48,6 +48,12 @@ export default function VersionMenu() {
             <dt className="text-slate-500">מקור</dt>
             <dd>{remoteCopy ? 'מקוון — GitHub Pages (מתעדכן אוטומטית)' : native ? 'מובנה ב-APK (גיבוי מקומי)' : 'דפדפן'}</dd>
           </dl>
+          <div className="mb-4 rounded-lg border border-slate-200 p-3 text-sm">
+            <div className="mb-1 font-semibold">מה חדש בגרסה {RELEASE_NOTES[0].version}</div>
+            <ul className="list-disc space-y-0.5 ps-5 text-slate-600">
+              {RELEASE_NOTES[0].notes.map((n) => <li key={n}>{n}</li>)}
+            </ul>
+          </div>
           <button type="button" className="btn-primary w-full" disabled={checking} onClick={check}>
             {checking ? 'בודק…' : '🔄 בדוק עדכוני גרסה'}
           </button>
