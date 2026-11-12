@@ -1,6 +1,12 @@
 import { addDays, schoolDow } from './dates';
 import type { Assignment, CalendarEvent, Lesson, LessonChange, Occurrence, StudentEvent } from './types';
 
+/** "צופיה / הדסה", או תווית חופשית, או ריק */
+export function lessonTeacherName(l: Lesson) {
+  if (l.teacher_label) return l.teacher_label;
+  return [l.teacher?.full_name, l.co_teacher?.full_name].filter(Boolean).join(' / ');
+}
+
 export function holidayOn(date: string, events: CalendarEvent[]) {
   return events.find((e) => e.kind === 'holiday' && e.start_date <= date && e.end_date >= date) ?? null;
 }
@@ -34,18 +40,18 @@ export function buildOccurrences(args: {
 
       const key = `${lesson.id}|${date}`;
       const change = changeMap.get(key);
+      const isSub = (change?.kind === 'substitute' || change?.kind === 'modified') && !!change.substitute_teacher_id;
       out.push({
         key,
         date,
         lesson,
+        subject: change?.new_subject || lesson.subject,
+        change: change ?? null,
         start: change?.new_start_time ?? lesson.start_time,
         end: change?.new_end_time ?? lesson.end_time,
         room: change?.new_room ?? lesson.room,
-        teacherId: change?.kind === 'substitute' && change.substitute_teacher_id ? change.substitute_teacher_id : lesson.teacher_id,
-        teacherName:
-          change?.kind === 'substitute' && change.substitute
-            ? change.substitute.full_name
-            : lesson.teacher?.full_name ?? '',
+        teacherId: isSub ? change!.substitute_teacher_id : lesson.teacher_id,
+        teacherName: isSub ? change!.substitute?.full_name ?? '' : lessonTeacherName(lesson),
         status: change?.kind ?? 'normal',
         changeNote: change?.note ?? null,
         personal: lesson.student_id !== null,

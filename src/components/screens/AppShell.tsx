@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { logout } from '@/lib/api';
+import VersionMenu from '../VersionMenu';
 import type { Profile } from '@/lib/types';
 import { ROLE_LABEL, isStaff } from '@/lib/types';
 
-export type Page = 'schedule' | 'requests';
+export type Page = 'schedule' | 'requests' | 'admin';
 
 export default function AppShell({ profile, page, children }: { profile: Profile; page: Page; children: React.ReactNode }) {
   const tab = (p: Page) => `btn-ghost ${page === p ? 'bg-brand-50 text-brand-700' : ''}`;
@@ -17,12 +18,14 @@ export default function AppShell({ profile, page, children }: { profile: Profile
           <nav className="flex gap-1 text-sm">
             <Link href="/" className={tab('schedule')}>מערכת</Link>
             <Link href="/?page=requests" className={tab('requests')}>{isStaff(profile.role) ? 'בקשות תלמידים' : 'הבקשות שלי'}</Link>
+            {profile.is_admin && <Link href="/?page=admin" className={tab('admin')}>ניהול משתמשים</Link>}
           </nav>
           <div className="ms-auto flex items-center gap-3 text-sm">
             <div className="text-end leading-tight">
               <div className="font-medium">{profile.full_name}</div>
               <div className="text-xs text-slate-500">{ROLE_LABEL[profile.role]}</div>
             </div>
+            <VersionMenu />
             <button className="btn-ghost" type="button" onClick={() => logout()}>יציאה</button>
           </div>
         </div>

@@ -10,7 +10,7 @@ export async function loadSchedule(
 
   let lessonsQ = supabase
     .from('lessons')
-    .select('*, teacher:profiles!lessons_teacher_id_fkey(full_name)')
+    .select('*, teacher:profiles!lessons_teacher_id_fkey(full_name), co_teacher:profiles!lessons_co_teacher_id_fkey(full_name)')
     .eq('class_id', classId);
   lessonsQ =
     studentId && scope === 'personal'

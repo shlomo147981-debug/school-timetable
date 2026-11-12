@@ -16,7 +16,13 @@ const config: CapacitorConfig = {
   backgroundColor: '#f8fafc',
   server: devUrl
     ? { url: devUrl, cleartext: devUrl.startsWith('http://') }
-    : { androidScheme: 'https' },
+    : {
+        androidScheme: 'https',
+        // OTA: מותר לעבור לגרסה המקוונת ב-GitHub Pages בתוך האפליקציה
+        allowNavigation: ['shlomo147981-debug.github.io'],
+        // אם הגרסה המקוונת לא נטענת (אין רשת) — דף מקומי שחוזר לגרסה המובנית
+        errorPath: 'offline.html',
+      },
   android: {
     allowMixedContent: false,
     captureInput: true,

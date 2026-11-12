@@ -9,6 +9,8 @@ import LoginScreen from '@/components/screens/LoginScreen';
 import AppShell from '@/components/screens/AppShell';
 import ScheduleScreen from '@/components/screens/ScheduleScreen';
 import RequestsScreen from '@/components/screens/RequestsScreen';
+import AdminScreen from '@/components/screens/AdminScreen';
+import OtaGate from '@/components/OtaGate';
 
 function Splash() {
   return (
@@ -24,11 +26,12 @@ function AppRoot() {
   if (auth.status === 'loading') return <Splash />;
   if (auth.status === 'signed_out') return <LoginScreen initialError={auth.error} />;
 
-  const page = params.get('page') === 'requests' ? 'requests' : 'schedule';
+  const p = params.get('page');
+  const page = p === 'requests' ? 'requests' : p === 'admin' && auth.profile.is_admin ? 'admin' : 'schedule';
   return (
     <AppShell profile={auth.profile} page={page}>
-      {page === 'requests'
-        ? <RequestsScreen profile={auth.profile} />
+      {page === 'requests' ? <RequestsScreen profile={auth.profile} />
+        : page === 'admin' ? <AdminScreen me={auth.profile} />
         : <ScheduleScreen key={auth.profile.id} profile={auth.profile} />}
     </AppShell>
   );
@@ -36,10 +39,12 @@ function AppRoot() {
 
 export default function Page() {
   return (
-    <AuthProvider>
-      <Suspense fallback={<Splash />}>
-        <AppRoot />
-      </Suspense>
-    </AuthProvider>
+    <OtaGate>
+      <AuthProvider>
+        <Suspense fallback={<Splash />}>
+          <AppRoot />
+        </Suspense>
+      </AuthProvider>
+    </OtaGate>
   );
 }

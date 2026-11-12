@@ -14,7 +14,8 @@ export interface ViewContext {
   students: Person[];       // צוות: תלמידי הכיתה הנבחרת
   children: (Person & { class_id: string | null })[]; // הורה: הילדים שלו
   teachers: Person[];       // מחנך: לשיבוץ מחליף
-  canEditSchedule: boolean; // מחנך של הכיתה הנבחרת
+  canEditSchedule: boolean; // מחנך של הכיתה הנבחרת או מנהל-על
+  homeroomId: string | null; // נמען ברירת מחדל לבקשות כשאין מורה לשיעור
 }
 
 /**
@@ -29,7 +30,7 @@ export async function resolveContext(
 ): Promise<ViewContext> {
   const ctx: ViewContext = {
     classId: null, className: '', studentId: null, scope: sp.scope === 'class' ? 'class' : 'personal',
-    classes: [], students: [], children: [], teachers: [], canEditSchedule: false,
+    classes: [], students: [], children: [], teachers: [], canEditSchedule: false, homeroomId: null,
   };
 
   if (me.role === 'student') {
@@ -56,7 +57,7 @@ export async function resolveContext(
       ctx.classes.find((c) => c.homeroom_teacher_id === me.id) ??
       ctx.classes[0];
     ctx.classId = selected?.id ?? null;
-    ctx.canEditSchedule = me.role === 'homeroom' && selected?.homeroom_teacher_id === me.id;
+    ctx.canEditSchedule = !!selected && (me.is_admin || (me.role === 'homeroom' && selected.homeroom_teacher_id === me.id));
 
     if (ctx.classId) {
       const { data: students } = await supabase
@@ -74,10 +75,11 @@ export async function resolveContext(
 
   if (ctx.classId) {
     const fromList = ctx.classes.find((c) => c.id === ctx.classId);
-    if (fromList) ctx.className = fromList.name;
+    if (fromList) { ctx.className = fromList.name; ctx.homeroomId = fromList.homeroom_teacher_id; }
     else {
-      const { data } = await supabase.from('classes').select('name').eq('id', ctx.classId).maybeSingle();
+      const { data } = await supabase.from('classes').select('name, homeroom_teacher_id').eq('id', ctx.classId).maybeSingle();
       ctx.className = data?.name ?? '';
+      ctx.homeroomId = data?.homeroom_teacher_id ?? null;
     }
   }
   return ctx;

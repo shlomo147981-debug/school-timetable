@@ -3,7 +3,7 @@
 begin;
 \set ON_ERROR_STOP 1
 -- ids
-insert into auth.users select ('00000000-0000-0000-0000-00000000000'||x)::uuid from unnest(array['1','2','3','4','5','6','7','8']) x;
+insert into auth.users (id) select ('00000000-0000-0000-0000-00000000000'||x)::uuid from unnest(array['1','2','3','4','5','6','7','8']) x;
 insert into classes (id,name) values ('c0000000-0000-0000-0000-000000000001','C1'),('c0000000-0000-0000-0000-000000000002','C2');
 insert into profiles (id,username,full_name,role,class_id) values
  ('00000000-0000-0000-0000-000000000001','h','Homeroom','homeroom','c0000000-0000-0000-0000-000000000001'),

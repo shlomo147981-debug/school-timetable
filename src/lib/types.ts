@@ -3,7 +3,7 @@ export type View = 'day' | 'week' | 'month';
 export type ExceptionType = 'absence' | 'late' | 'missing_equipment' | 'misbehavior' | 'praise';
 export type ExceptionStatus = 'pending_justification' | 'justified' | 'unjustified';
 export type AssignmentType = 'homework' | 'exam' | 'quiz' | 'event';
-export type LessonChangeKind = 'cancelled' | 'substitute' | 'moved' | 'room_change';
+export type LessonChangeKind = 'cancelled' | 'substitute' | 'moved' | 'room_change' | 'modified';
 export type CalendarKind = 'holiday' | 'trip' | 'event';
 export type RequestKind = 'justify_absence' | 'appeal_note' | 'other';
 export type RequestStatus = 'open' | 'approved' | 'rejected';
@@ -14,6 +14,7 @@ export interface Profile {
   full_name: string;
   role: Role;
   class_id: string | null;
+  is_admin: boolean;
 }
 
 export interface Person {
@@ -30,7 +31,9 @@ export interface ClassRow {
 export interface Lesson {
   id: string;
   class_id: string;
-  teacher_id: string;
+  teacher_id: string | null;
+  co_teacher_id: string | null;
+  teacher_label: string | null;
   student_id: string | null;
   subject: string;
   room: string | null;
@@ -41,6 +44,7 @@ export interface Lesson {
   valid_from: string | null;
   valid_to: string | null;
   teacher: { full_name: string } | null;
+  co_teacher: { full_name: string } | null;
 }
 
 export interface LessonChange {
@@ -52,6 +56,7 @@ export interface LessonChange {
   new_start_time: string | null;
   new_end_time: string | null;
   new_room: string | null;
+  new_subject: string | null;
   note: string | null;
   substitute: { full_name: string } | null;
 }
@@ -93,10 +98,14 @@ export interface Occurrence {
   key: string;
   date: string;
   lesson: Lesson;
+  /** מקצוע אפקטיבי (אחרי שינוי חד-פעמי) */
+  subject: string;
+  /** השינוי החד-פעמי הגולמי (אם יש) */
+  change: LessonChange | null;
   start: string;
   end: string;
   room: string | null;
-  teacherId: string;
+  teacherId: string | null;
   teacherName: string;
   status: 'normal' | LessonChangeKind;
   changeNote: string | null;
@@ -138,6 +147,7 @@ export const CHANGE_LABEL: Record<LessonChangeKind, string> = {
   substitute: 'מורה מחליף',
   moved: 'שינוי שעה',
   room_change: 'החלפת חדר',
+  modified: 'שינוי במערכת',
 };
 
 export const CALENDAR_LABEL: Record<CalendarKind, string> = {

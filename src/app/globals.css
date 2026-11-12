@@ -13,6 +13,7 @@ body {
   overscroll-behavior-y: none;
 }
 .safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 /* בתוך האפליקציה המקורית: ללא בחירת טקסט בכפתורים, תחושה "מקורית" יותר */
 html.native button { user-select: none; -webkit-user-select: none; }
 

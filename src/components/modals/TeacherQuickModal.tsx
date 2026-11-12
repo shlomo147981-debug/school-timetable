@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from 'react';
 import Modal from '../ui/Modal';
-import { addAssignment, changeLesson, reportException } from '@/lib/api';
+import { addAssignment, reportException } from '@/lib/api';
+import LessonEditor from './LessonEditor';
 import { heDate, hhmm } from '@/lib/dates';
-import type { AssignmentType, ExceptionType, LessonChangeKind, Occurrence, Person } from '@/lib/types';
-import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL } from '@/lib/types';
+import type { AssignmentType, ExceptionType, Occurrence, Person } from '@/lib/types';
+import { ASSIGNMENT_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL } from '@/lib/types';
 
-type Tab = 'exception' | 'assignment' | 'change';
+type Tab = 'exception' | 'assignment' | 'edit';
 
 const EXCEPTION_ICONS: Record<ExceptionType, string> = {
   absence: '🚫', late: '⏰', missing_equipment: '🎒', misbehavior: '⚠️', praise: '⭐',
@@ -17,7 +18,7 @@ const EXCEPTION_ICONS: Record<ExceptionType, string> = {
  * מודאל מהיר למורה בלחיצה על שיעור:
  *  1. הערה חריגה (פרטית לתלמיד ולהוריו) — אפשר לסמן כמה תלמידים יחד
  *  2. סיכום שיעור / משימה / מבחן — גלוי לכל הכיתה
- *  3. (מחנך בלבד) שינוי מערכת למופע הזה: ביטול, מחליף, הזזה, חדר
+ *  3. (מחנך/מנהל) עריכת שיעור: חד-פעמי או קבוע — מקצוע, מורה, שעות, ביטול
  */
 export default function TeacherQuickModal({
   occurrence: occ, classId, students, preselectedStudentId, teachers, canEditSchedule, onChanged, onClose,
@@ -39,13 +40,6 @@ export default function TeacherQuickModal({
   const [aTitle, setATitle] = useState('');
   const [aDue, setADue] = useState(occ.date);
   const [aDesc, setADesc] = useState('');
-  // --- change state
-  const [cKind, setCKind] = useState<LessonChangeKind | 'restore'>('substitute');
-  const [subId, setSubId] = useState('');
-  const [newStart, setNewStart] = useState(hhmm(occ.start));
-  const [newEnd, setNewEnd] = useState(hhmm(occ.end));
-  const [newRoom, setNewRoom] = useState('');
-  const [cNote, setCNote] = useState('');
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>, success: string, reset?: () => void) =>
     start(async () => {
@@ -60,14 +54,14 @@ export default function TeacherQuickModal({
   const tabs: { id: Tab; label: string }[] = [
     { id: 'exception', label: 'הערה חריגה' },
     { id: 'assignment', label: 'סיכום שיעור / משימה' },
-    ...(canEditSchedule ? [{ id: 'change' as Tab, label: 'שינוי מערכת' }] : []),
+    ...(canEditSchedule ? [{ id: 'edit' as Tab, label: 'עריכת שיעור' }] : []),
   ];
 
   const shownStudents = students.filter((s) => s.full_name.includes(filter.trim()));
 
   return (
     <Modal
-      title={occ.lesson.subject}
+      title={occ.subject}
       subtitle={`${heDate(occ.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${hhmm(occ.start)}–${hhmm(occ.end)}${occ.room ? ` · חדר ${occ.room}` : ''}`}
       onClose={onClose}
     >
@@ -168,41 +162,8 @@ export default function TeacherQuickModal({
         </form>
       )}
 
-      {tab === 'change' && canEditSchedule && (
-        <form className="space-y-4" onSubmit={(e) => {
-          e.preventDefault();
-          run(() => changeLesson({ lessonId: occ.lesson.id, date: occ.date, kind: cKind, substituteId: subId, newStart, newEnd, newRoom, note: cNote }),
-            'המערכת עודכנה');
-        }}>
-          <p className="text-xs text-slate-500">השינוי חל רק על המופע בתאריך זה. לשינוי קבוע ערכו את תבנית המערכת.</p>
-          <div className="grid grid-cols-3 gap-1.5">
-            {([...Object.keys(CHANGE_LABEL), 'restore'] as (LessonChangeKind | 'restore')[]).map((k) => (
-              <button key={k} type="button" onClick={() => setCKind(k)}
-                className={`rounded-lg border px-2 py-2 text-sm ${cKind === k ? 'border-brand-500 bg-brand-50 font-medium' : 'border-slate-200'}`}>
-                {k === 'restore' ? 'החזרה למקור' : CHANGE_LABEL[k]}
-              </button>
-            ))}
-          </div>
-          {cKind === 'substitute' && (
-            <select className="input" required value={subId} onChange={(e) => setSubId(e.target.value)} aria-label="מורה מחליף">
-              <option value="">בחירת מורה מחליף…</option>
-              {teachers.filter((t) => t.id !== occ.lesson.teacher_id).map((t) => <option key={t.id} value={t.id}>{t.full_name}</option>)}
-            </select>
-          )}
-          {cKind === 'moved' && (
-            <div className="grid grid-cols-2 gap-2">
-              <div><label className="label">התחלה</label><input type="time" className="input" value={newStart} onChange={(e) => setNewStart(e.target.value)} /></div>
-              <div><label className="label">סיום</label><input type="time" className="input" value={newEnd} onChange={(e) => setNewEnd(e.target.value)} /></div>
-            </div>
-          )}
-          {(cKind === 'room_change' || cKind === 'moved' || cKind === 'substitute') && (
-            <input className="input" placeholder="חדר חדש (אופציונלי)" value={newRoom} onChange={(e) => setNewRoom(e.target.value)} />
-          )}
-          {cKind !== 'restore' && (
-            <input className="input" placeholder="הודעה לתלמידים (אופציונלי)" value={cNote} onChange={(e) => setCNote(e.target.value)} />
-          )}
-          <Footer pending={pending} msg={msg} label="עדכון מערכת" />
-        </form>
+      {tab === 'edit' && canEditSchedule && (
+        <LessonEditor occ={occ} teachers={teachers} onSaved={() => { onChanged(); onClose(); }} />
       )}
     </Modal>
   );

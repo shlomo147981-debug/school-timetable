@@ -20,7 +20,8 @@ npm run dev                  # http://localhost:3000
 * הסשן נשמר ב-`localStorage` ומתרענן אוטומטית.
 
 ```
-supabase/migrations/     0001_schema.sql, 0002_rls.sql  (+ SETUP_ALL.sql מאוחד)
+supabase/migrations/     0001_schema.sql, 0002_rls.sql, 0003_admin_timetable_editing.sql
+                         (+ SETUP_ALL.sql מאוחד, SETUP_UPGRADE_0003.sql לשדרוג)
 supabase/tests/          rls_scenarios.sql
 scripts/seed.mjs         נתוני דמו (service role)
 src/
@@ -71,6 +72,27 @@ select full_name from profiles where role = 'student';   -- רק נועה ומי
 select count(*) from student_events where student_id not in (select student_id from parent_children where parent_id = auth.uid()); -- 0
 rollback;
 ```
+
+## מנהל-על וניהול משתמשים
+* `profiles.is_admin` — מנהל-על (שלמה יצחקי, `shlomo`) רואה ועורך הכל, ומקבל הרשאות מחנך בכל הכיתות.
+* לשונית **"ניהול משתמשים"** (רק למנהל): יצירה/עריכה/מחיקה של תלמידים, מורים, מחנכים והורים, שיוך ילדים להורה, כיתות.
+* יצירת משתמש נעשית ב-DB דרך `admin_create_user` / `admin_update_user` / `admin_delete_user` (SECURITY DEFINER,
+  בודקות `is_admin()`), כך שהאפליקציה **אינה צריכה** את מפתח ה-service role.
+* בדיקות: `supabase/tests/admin_scenarios.sql` (24) + `rls_scenarios.sql` (26).
+
+## עריכת מערכת (מחנך / מנהל)
+* **לחיצה על שיעור → "עריכת שיעור"**: מקצוע, מורה, מורה שותף, שעות, חדר, הערה, ביטול.
+  היקף: **"רק בתאריך הזה"** (`lesson_changes`) או **"כל שבוע"** (עדכון `lessons`).
+* **➕** בכל יום: הוספת שיעור חד-פעמי או קבוע (אפשר גם שיעור אישי לתלמיד נבחר).
+* **"מצב עריכה"**: סימון מרובה / "בחר יום שלם" → ביטול, הזזת זמנים (±דקות), פעילות מיוחדת (טיול/יום שיא), שחזור.
+
+## עדכונים מרחוק (OTA) — GitHub Pages
+* `.github/workflows/pages.yml` מפרסם את האתר הסטטי ל-`https://shlomo147981-debug.github.io/school-timetable/` בכל push.
+* כל build כותב `version.json` (מספר build = זמן ה-commit).
+* ה-APK מכיל גרסה מובנית מלאה. בפתיחה הוא בודק את `version.json` ב-Pages — אם יש גרסה חדשה יותר
+  עובר אליה אוטומטית (כולל העברת ההתחברות). אין רשת → נשאר בגרסה המובנית (`public/offline.html` כגיבוי).
+* ⚙️ בכותרת: מספר גרסה + **"בדוק עדכוני גרסה"** + "עדכן עכשיו".
+* הפעלה חד-פעמית: **Settings → Pages → Source: GitHub Actions**. בחשבון GitHub חינמי Pages עובד רק במאגר **ציבורי**.
 
 ## אפליקציית אנדרואיד (Capacitor) — עצמאית
 ה-APK מכיל את כל האפליקציה (`out/`) ומדבר ישירות עם Supabase מהטלפון. אין שרת.

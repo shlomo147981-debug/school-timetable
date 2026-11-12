@@ -88,3 +88,16 @@ export function rangeTitle(view: View, iso: string) {
 }
 
 export const hhmm = (t: string) => t.slice(0, 5);
+
+/** '08:30' + 15 → '08:45' (חסום ל-00:00–23:59) */
+export function addMinutes(t: string, minutes: number) {
+  const [h, m] = t.split(':').map(Number);
+  const total = Math.min(23 * 60 + 59, Math.max(0, h * 60 + m + minutes));
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+export const minutesBetween = (a: string, b: string) => {
+  const [ah, am] = a.split(':').map(Number);
+  const [bh, bm] = b.split(':').map(Number);
+  return bh * 60 + bm - (ah * 60 + am);
+};

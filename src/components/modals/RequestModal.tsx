@@ -10,8 +10,9 @@ import { ASSIGNMENT_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL, REQUEST_KIND
 
 /** תלמיד/הורה: צפייה בפרטי השיעור + שליחת בקשה ישירה למורה */
 export default function RequestModal({
-  occurrence: occ, studentId, onChanged, onClose,
-}: { occurrence: Occurrence; studentId: string; onChanged: () => void; onClose: () => void }) {
+  occurrence: occ, studentId, homeroomId, onChanged, onClose,
+}: { occurrence: Occurrence; studentId: string; homeroomId: string | null; onChanged: () => void; onClose: () => void }) {
+  const recipient = occ.teacherId ?? homeroomId;
   const [pending, start] = useTransition();
   const events = occ.events.filter((e) => !e.retracted);
   const [eventId, setEventId] = useState<string>(events[0]?.id ?? '');
@@ -24,6 +25,7 @@ export default function RequestModal({
 
   const submit = () =>
     start(async () => {
+      if (!recipient) { setMsg({ ok: false, text: 'לשיעור זה לא מוגדר מורה לפנייה' }); return; }
       let attachmentPath: string | null = null;
       if (file) {
         // נתיב מתחיל ב-studentId — נאכף ע"י מדיניות ה-Storage
@@ -33,7 +35,7 @@ export default function RequestModal({
         attachmentPath = path;
       }
       const r = await submitRequest({
-        studentId, teacherId: occ.teacherId, kind, message, eventId: eventId || null,
+        studentId, teacherId: recipient!, kind, message, eventId: eventId || null,
         lessonId: occ.lesson.id, lessonDate: occ.date, attachmentPath,
       });
       if (r.ok) { setMsg({ ok: true, text: 'הבקשה נשלחה למורה' }); setMessage(''); setFile(null); onChanged(); }
@@ -42,8 +44,8 @@ export default function RequestModal({
 
   return (
     <Modal
-      title={occ.lesson.subject}
-      subtitle={`${heDate(occ.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${hhmm(occ.start)}–${hhmm(occ.end)} · ${occ.teacherName}`}
+      title={occ.subject}
+      subtitle={`${heDate(occ.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${hhmm(occ.start)}–${hhmm(occ.end)} ${occ.teacherName ? ` · ${occ.teacherName}` : ''}`}
       onClose={onClose}
     >
       {occ.assignments.length > 0 && (

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>אין חיבור</title>
+  <style>
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+      font-family: system-ui, Arial, sans-serif; background:#f8fafc; color:#1e293b; padding:16px; box-sizing:border-box; }
+    .card { max-width:340px; background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:24px; text-align:center; }
+    button { margin-top:10px; width:100%; border:0; border-radius:10px; padding:11px; font-size:15px; }
+    .primary { background:#2459c9; color:#fff; } .ghost { background:#f1f5f9; color:#1e293b; }
+    p { color:#475569; line-height:1.6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size:40px">📡</div>
+    <h1 style="font-size:20px;margin:8px 0">הגרסה המקוונת לא זמינה</h1>
+    <p>אין חיבור לאינטרנט או שהשרת לא זמין.</p>
+    <button class="primary" onclick="location.replace('/?offline=1')">המשך בגרסה המובנית</button>
+    <button class="ghost" onclick="history.length > 1 ? history.back() : location.reload()">נסו שוב</button>
+  </div>
+</body>
+</html>

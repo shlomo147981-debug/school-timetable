@@ -13,8 +13,8 @@ const EVENT_STYLE: Record<string, string> = {
 };
 
 export default function LessonCard({
-  occ, compact = false, onClick,
-}: { occ: Occurrence; compact?: boolean; onClick: () => void }) {
+  occ, compact = false, onClick, selectable = false, selected = false,
+}: { occ: Occurrence; compact?: boolean; onClick: () => void; selectable?: boolean; selected?: boolean }) {
   const cancelled = occ.status === 'cancelled';
   const changed = occ.status !== 'normal' && !cancelled;
   const visibleEvents = occ.events.filter((e) => !e.retracted);
@@ -23,15 +23,22 @@ export default function LessonCard({
     <button
       type="button"
       onClick={onClick}
-      className={`group w-full rounded-lg border p-2.5 text-start transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 ${
-        cancelled ? 'border-slate-200 bg-slate-50 opacity-70'
+      aria-pressed={selectable ? selected : undefined}
+      className={`group relative w-full rounded-lg border p-2.5 text-start transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+        selected ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-500'
+        : cancelled ? 'border-slate-200 bg-slate-50 opacity-70'
         : occ.personal ? 'border-violet-200 bg-violet-50'
         : changed ? 'border-amber-300 bg-amber-50'
         : 'border-slate-200 bg-white'
       }`}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className={`font-semibold ${cancelled ? 'line-through' : ''}`}>{occ.lesson.subject}</span>
+        {selectable && (
+          <span aria-hidden className={`flex h-4 w-4 shrink-0 items-center justify-center self-center rounded border text-[10px] ${selected ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-400 bg-white'}`}>
+            {selected ? '✓' : ''}
+          </span>
+        )}
+        <span className={`me-auto font-semibold ${cancelled ? 'line-through' : ''}`}>{occ.subject}</span>
         <span className="shrink-0 text-xs tabular-nums text-slate-500" dir="ltr">
           {hhmm(occ.start)}–{hhmm(occ.end)}
         </span>
@@ -39,7 +46,7 @@ export default function LessonCard({
 
       <div className="mt-0.5 text-xs text-slate-600">
         {occ.teacherName}
-        {occ.room && <> · חדר {occ.room}</>}
+        {occ.room && <>{occ.teacherName ? ' · ' : ''}חדר {occ.room}</>}
       </div>
 
       <div className="mt-1.5 flex flex-wrap gap-1">

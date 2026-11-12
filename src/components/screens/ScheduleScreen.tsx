@@ -94,6 +94,7 @@ export default function ScheduleScreen({ profile }: { profile: Profile }) {
             viewerRole={profile.role}
             classId={data.ctx.classId}
             studentId={data.ctx.studentId}
+            homeroomId={data.ctx.homeroomId}
             occurrences={data.occurrences}
             calendar={data.calendar}
             assignments={data.assignments}

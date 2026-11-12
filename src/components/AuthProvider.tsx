@@ -10,6 +10,17 @@ type AuthState =
   | { status: 'signed_out'; profile: null; error?: string }
   | { status: 'signed_in'; profile: Profile };
 
+/** סשן שהועבר מהגרסה המובנית (OTA) דרך ה-hash — נקלט פעם אחת ונמחק מה-URL */
+async function adoptHandedOverSession() {
+  if (typeof location === 'undefined' || !location.hash.includes('rt=')) return;
+  const h = new URLSearchParams(location.hash.slice(1));
+  const access_token = h.get('at'), refresh_token = h.get('rt');
+  history.replaceState(null, '', location.pathname + location.search);
+  if (access_token && refresh_token) {
+    try { await getSupabase().auth.setSession({ access_token, refresh_token }); } catch { /* ignore */ }
+  }
+}
+
 const AuthContext = createContext<{ auth: AuthState; reload: () => Promise<void> } | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -17,6 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const reload = useCallback(async () => {
     const supabase = getSupabase();
+    await adoptHandedOverSession();
     const { data } = await supabase.auth.getSession();
     const user = data.session?.user;
     if (!user) { setAuth({ status: 'signed_out', profile: null }); return; }
