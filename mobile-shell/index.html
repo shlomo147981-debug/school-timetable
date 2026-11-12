@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>מערכת שעות</title>
+  <style>
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+      font-family: system-ui, "Segoe UI", Arial, sans-serif; background:#f8fafc; color:#1e293b;
+      padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); box-sizing:border-box; }
+    .card { max-width:360px; background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:24px; text-align:center; }
+    .logo { width:56px; height:56px; margin:0 auto 12px; border-radius:14px; background:#2459c9; color:#fff;
+      display:flex; align-items:center; justify-content:center; font-size:28px; }
+    code { direction:ltr; display:inline-block; background:#f1f5f9; padding:2px 6px; border-radius:6px; }
+    p { line-height:1.6; color:#475569; font-size:14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">📅</div>
+    <h1 style="font-size:20px;margin:0 0 8px">מערכת שעות</h1>
+    <p>האפליקציה עדיין לא מחוברת לשרת.<br />יש להגדיר את כתובת השרת ב-<code>capacitor.config.ts</code>
+      (או <code>CAP_SERVER_URL</code>) ולבנות מחדש.</p>
+  </div>
+</body>
+</html>

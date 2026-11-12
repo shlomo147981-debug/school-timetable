@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+body {
+  @apply bg-slate-50 text-slate-800 antialiased;
+  /* safe-area: נוטש, שורת סטטוס וסרגל ניווט באנדרואיד/iOS */
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+.safe-top { padding-top: env(safe-area-inset-top); }
+/* בתוך האפליקציה המקורית: ללא בחירת טקסט בכפתורים, תחושה "מקורית" יותר */
+html.native button { user-select: none; -webkit-user-select: none; }
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-50; }
+  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700; }
+  .btn-ghost { @apply btn text-slate-600 hover:bg-slate-100; }
+  .input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100; }
+  .label { @apply mb-1 block text-sm font-medium text-slate-700; }
+  .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
+}

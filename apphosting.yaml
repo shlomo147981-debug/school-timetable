@@ -1,0 +1,19 @@
+# Firebase App Hosting — https://firebase.google.com/docs/app-hosting/configure
+runConfig:
+  minInstances: 0
+  maxInstances: 2
+  concurrency: 80
+  memoryMiB: 512
+
+env:
+  # ערכים ציבוריים (נחשפים ממילא לדפדפן). נדרשים גם ב-build וגם ב-runtime.
+  - variable: NEXT_PUBLIC_SUPABASE_URL
+    value: https://cvldkyjrczujebjyshey.supabase.co
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_SUPABASE_ANON_KEY
+    value: sb_publishable_qDaX72KxzVJmXODHTeOA2Q_vjvJ0XLb
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_LOGIN_DOMAIN
+    value: school.local
+    availability: [BUILD, RUNTIME]
+  # ⚠ אין להוסיף כאן את SUPABASE_SERVICE_ROLE_KEY — האפליקציה לא צריכה אותו בזמן ריצה.
