@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
-import { adminCreateClass, adminCreateUser, adminDeleteUser, adminUpdateUser } from '@/lib/api';
+import { adminCreateClass, adminCreateUser, adminDeleteClass, adminDeleteUser, adminUpdateUser, classDeletionImpact } from '@/lib/api';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import type { Profile, Role } from '@/lib/types';
 import { ROLE_LABEL } from '@/lib/types';
 import Modal from '../ui/Modal';
@@ -93,7 +94,7 @@ export default function AdminScreen({ me }: { me: Profile }) {
         </div>
       )}
 
-      {data && <ClassesCard classes={data.classes} nameOf={nameOf} onSaved={() => { load(); notify('הכיתה נוספה'); }} />}
+      {data && <ClassesCard classes={data.classes} nameOf={nameOf} onSaved={(m) => { load(); notify(m); }} />}
 
       {editing && data && (
         <UserForm
@@ -112,22 +113,39 @@ export default function AdminScreen({ me }: { me: Profile }) {
   );
 }
 
-function ClassesCard({ classes, nameOf, onSaved }: { classes: ClassRow[]; nameOf: (id: string) => string; onSaved: () => void }) {
+function ClassesCard({ classes, nameOf, onSaved }: { classes: ClassRow[]; nameOf: (id: string) => string; onSaved: (msg: string) => void }) {
   const [name, setName] = useState('');
   const [grade, setGrade] = useState('');
   const [error, setError] = useState('');
+  const [del, setDel] = useState<{ cls: ClassRow; impact: { lessons: number; students: number; assignments: number } | null } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     const r = await adminCreateClass(name, grade ? Number(grade) : null);
-    if (r.ok) { setName(''); setGrade(''); setError(''); onSaved(); } else setError(r.error);
+    if (r.ok) { setName(''); setGrade(''); setError(''); onSaved('הכיתה נוספה'); } else setError(r.error);
+  };
+  const askDelete = async (cls: ClassRow) => {
+    setDel({ cls, impact: null });
+    const impact = await classDeletionImpact(cls.id);
+    setDel({ cls, impact });
+  };
+  const doDelete = async () => {
+    if (!del) return;
+    setDeleting(true);
+    const r = await adminDeleteClass(del.cls.id);
+    setDeleting(false);
+    if (r.ok) { setDel(null); onSaved(`כיתה ${del.cls.name} נמחקה`); } else { setDel(null); setError(r.error); }
   };
   return (
     <div className="card p-3">
       <h2 className="mb-2 font-semibold">כיתות</h2>
       <div className="mb-3 flex flex-wrap gap-2 text-sm">
         {classes.map((c) => (
-          <span key={c.id} className="rounded-lg bg-slate-100 px-2 py-1">
+          <span key={c.id} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 py-1 pe-1 ps-2">
             {c.name}{c.homeroom_teacher_id && <span className="text-slate-500"> · {nameOf(c.homeroom_teacher_id)}</span>}
+            <button type="button" aria-label={`מחיקת כיתה ${c.name}`} title="מחיקת כיתה"
+              className="ms-1 flex h-5 w-5 items-center justify-center rounded-full text-xs text-red-700 hover:bg-red-100"
+              onClick={() => askDelete(c)}>✕</button>
           </span>
         ))}
       </div>
@@ -137,6 +155,22 @@ function ClassesCard({ classes, nameOf, onSaved }: { classes: ClassRow[]; nameOf
         <button className="btn bg-slate-100" type="submit">➕ כיתה</button>
         {error && <span className="text-sm text-red-700">{error}</span>}
       </form>
+      {del && (
+        <ConfirmDialog title={`מחיקת כיתה ${del.cls.name}`} confirmLabel="מחיקה לצמיתות" danger pending={deleting || !del.impact}
+          onCancel={() => setDel(null)} onConfirm={doDelete}>
+          <div className="space-y-2 text-sm">
+            <p className="font-medium text-red-700">⚠️ הפעולה אינה הפיכה.</p>
+            {!del.impact ? <p className="text-slate-500">בודק מה ייפגע…</p> : (
+              <ul className="list-disc space-y-1 ps-5">
+                <li>יימחקו <b>{del.impact.lessons}</b> שיעורים ממערכת השעות של הכיתה, כולל שינויים חד-פעמיים, הערות ודיווחים שנרשמו בשיעורים אלה.</li>
+                <li>יימחקו <b>{del.impact.assignments}</b> משימות/מבחנים ואירועי הלוח של הכיתה.</li>
+                <li><b>{del.impact.students}</b> תלמידים <b>לא יימחקו</b>, אבל יישארו ללא כיתה (אפשר לשייך אותם מחדש בעריכת משתמש).</li>
+                {del.cls.homeroom_teacher_id && <li>המחנך/ת {nameOf(del.cls.homeroom_teacher_id)} ינותק/תנותק מהכיתה.</li>}
+              </ul>
+            )}
+          </div>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
@@ -151,7 +185,8 @@ function UserForm({
   const [username, setUsername] = useState(user?.username ?? '');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>(user?.role ?? 'student');
-  const [classId, setClassId] = useState(user?.class_id ?? classes[0]?.id ?? '');
+  // ברירת מחדל: הכיתה של המנהל עצמו (ולא הראשונה בסדר האלפביתי)
+  const [classId, setClassId] = useState(user?.class_id ?? (classes.find((c) => c.id === me.class_id) ?? classes[0])?.id ?? '');
   const [kids, setKids] = useState<Set<string>>(new Set(children));
   const [isAdmin, setIsAdmin] = useState(user?.is_admin ?? false);
   const [kidFilter, setKidFilter] = useState('');

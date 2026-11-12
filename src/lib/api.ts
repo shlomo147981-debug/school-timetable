@@ -1,7 +1,7 @@
 // פעולות כתיבה — ישירות מהלקוח מול Supabase (במקום Server Actions).
 // כל פעולה רצה עם ה-JWT של המשתמש המחובר, ולכן כפופה במלואה ל-RLS.
 import { getSupabase } from './supabase/client';
-import type { AssignmentType, ExceptionType, LessonChangeKind, Profile, RequestKind, Role } from './types';
+import type { AssignmentType, ExceptionType, Lesson, LessonChangeKind, Profile, RequestKind, Role } from './types';
 
 export type Result = { ok: true } | { ok: false; error: string };
 const fail = (error: string): Result => ({ ok: false, error });
@@ -288,4 +288,106 @@ export async function adminCreateClass(name: string, grade: number | null): Prom
   if (!name.trim()) return fail('יש להזין שם כיתה');
   const { error } = await getSupabase().from('classes').insert({ name: name.trim(), grade });
   return error ? fail('יצירת הכיתה נכשלה') : ok();
+}
+
+// =====================================================================
+// גרסה 1.2.0 — היקפי עריכה, הוספה מרובה, מחיקת כיתה, הערות לכיתה
+// =====================================================================
+
+/** כל השיעורים הקבועים באותה משבצת (אותה שעת התחלה) בכיתה — לכל ימי השבוע */
+export async function fetchSlotLessons(classId: string, startTime: string, studentId: string | null): Promise<Lesson[]> {
+  let q = getSupabase().from('lessons').select('*').eq('class_id', classId).eq('start_time', startTime).is('specific_date', null);
+  q = studentId ? q.eq('student_id', studentId) : q.is('student_id', null);
+  const { data } = await q;
+  return (data ?? []) as Lesson[];
+}
+
+/** עדכון חלקי קבוע של כמה שיעורים (רק השדות שהשתנו) */
+export async function updateLessonsPartial(ids: string[], patch: Partial<LessonFields>): Promise<Result> {
+  if (!ids.length) return fail('לא נמצאו שיעורים לעדכון');
+  if (patch.start_time && patch.end_time && patch.end_time <= patch.start_time) return fail('שעת הסיום חייבת להיות אחרי שעת ההתחלה');
+  const { error, count } = await getSupabase().from('lessons').update(patch, { count: 'exact' }).in('id', ids);
+  if (error || !count) return fail('אין הרשאה לערוך את המערכת הקבועה');
+  return ok();
+}
+
+/** הוספת כמה שיעורים בבת אחת (למשל "כל הימים" / "רק השבוע") */
+export async function addLessons(rows: (LessonFields & {
+  classId: string; date: string; dayOfWeek: number; recurring: boolean; studentId?: string | null;
+})[]): Promise<Result> {
+  for (const r of rows) { const v = validate(r); if (v) return fail(v); }
+  const { error } = await getSupabase().from('lessons').insert(rows.map((r) => ({
+    ...cleanFields(r),
+    class_id: r.classId,
+    student_id: r.studentId || null,
+    day_of_week: r.dayOfWeek,
+    specific_date: r.recurring ? null : r.date,
+    valid_from: r.recurring ? r.date : null,
+  })));
+  return error ? fail('הוספת השיעורים נכשלה (אין הרשאה?)') : ok();
+}
+
+/** הסרת כמה שיעורים קבועים מהמערכת החל מתאריך */
+export async function endLessons(ids: string[], fromDate: string): Promise<Result> {
+  if (!ids.length) return fail('לא נמצאו שיעורים');
+  const { error } = await getSupabase().from('lessons').update({ valid_to: addDaysISO(fromDate, -1) }).in('id', ids);
+  return error ? fail('אין הרשאה') : ok();
+}
+
+/** מה יושפע ממחיקת כיתה — להצגה בחלונית האזהרה */
+export async function classDeletionImpact(classId: string) {
+  const s = getSupabase();
+  const [lessons, students, assignments] = await Promise.all([
+    s.from('lessons').select('id', { count: 'exact', head: true }).eq('class_id', classId),
+    s.from('profiles').select('id', { count: 'exact', head: true }).eq('class_id', classId).eq('role', 'student'),
+    s.from('assignments').select('id', { count: 'exact', head: true }).eq('class_id', classId),
+  ]);
+  return { lessons: lessons.count ?? 0, students: students.count ?? 0, assignments: assignments.count ?? 0 };
+}
+
+/** מחיקת כיתה (מנהל-על; RLS classes_admin). מוחק בשרשרת את המערכת, השינויים, ההערות והמשימות שלה. */
+export async function adminDeleteClass(classId: string): Promise<Result> {
+  const { error, count } = await getSupabase().from('classes').delete({ count: 'exact' }).eq('id', classId);
+  if (error) return fail('מחיקת הכיתה נכשלה');
+  if (!count) return fail('אין הרשאה למחוק את הכיתה');
+  return ok();
+}
+
+export interface ClassNote {
+  id: string;
+  type: ExceptionType;
+  note: string | null;
+  status: string | null;
+  retracted: boolean;
+  lesson_date: string;
+  created_at: string;
+  reporter_id: string | null;
+  student: { full_name: string } | null;
+  reporter: { full_name: string } | null;
+  lesson: { subject: string; class_id: string } | null;
+}
+
+/** כל ההערות/הדיווחים על תלמידי כיתה (RLS: מחנך הכיתה / מנהל רואים הכל; מורה — את שלו) */
+export async function fetchClassNotes(classId: string, sinceDate: string): Promise<ClassNote[]> {
+  const { data } = await getSupabase()
+    .from('student_events')
+    .select(`id, type, note, status, retracted, lesson_date, created_at, reporter_id,
+      student:profiles!student_events_student_id_fkey(full_name),
+      reporter:profiles!student_events_reporter_id_fkey(full_name),
+      lesson:lessons!inner(subject, class_id)`)
+    .eq('lesson.class_id', classId)
+    .gte('lesson_date', sinceDate)
+    .order('created_at', { ascending: false })
+    .limit(300);
+  return (data ?? []) as unknown as ClassNote[];
+}
+
+/** מספר הערות חדשות שמורים אחרים הזינו מאז הצפייה האחרונה (לתג בתפריט) */
+export async function countNewNotes(sinceIso: string, myId: string): Promise<number> {
+  const { count } = await getSupabase()
+    .from('student_events')
+    .select('id', { count: 'exact', head: true })
+    .gt('created_at', sinceIso)
+    .neq('reporter_id', myId);
+  return count ?? 0;
 }

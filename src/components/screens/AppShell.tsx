@@ -1,23 +1,46 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { logout } from '@/lib/api';
-import VersionMenu from '../VersionMenu';
+import { countNewNotes, logout } from '@/lib/api';
+import { getNotesSeen } from '@/lib/notesSeen';
 import type { Profile } from '@/lib/types';
 import { ROLE_LABEL, isStaff } from '@/lib/types';
+import VersionMenu from '../VersionMenu';
+import ConfirmDialog from '../ui/ConfirmDialog';
 
-export type Page = 'schedule' | 'requests' | 'admin';
+export type Page = 'schedule' | 'requests' | 'admin' | 'notes';
 
 export default function AppShell({ profile, page, children }: { profile: Profile; page: Page; children: React.ReactNode }) {
+  const [askLogout, setAskLogout] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [newNotes, setNewNotes] = useState(0);
+  const staff = isStaff(profile.role) || profile.is_admin;
   const tab = (p: Page) => `btn-ghost ${page === p ? 'bg-brand-50 text-brand-700' : ''}`;
+
+  // תג "הערות חדשות" — הערות שמורים אחרים הזינו מאז הצפייה האחרונה
+  useEffect(() => {
+    if (!staff) return;
+    const refresh = () => countNewNotes(getNotesSeen(profile.id), profile.id).then(setNewNotes).catch(() => {});
+    refresh();
+    window.addEventListener('notes-seen', refresh);
+    return () => window.removeEventListener('notes-seen', refresh);
+  }, [staff, profile.id, page]);
+
   return (
     <div className="min-h-screen">
       <header className="safe-top sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
           <Link href="/" className="text-lg font-bold text-brand-700">📅 מערכת שעות</Link>
-          <nav className="flex gap-1 text-sm">
+          <nav className="flex flex-wrap gap-1 text-sm">
             <Link href="/" className={tab('schedule')}>מערכת</Link>
-            <Link href="/?page=requests" className={tab('requests')}>{isStaff(profile.role) ? 'בקשות תלמידים' : 'הבקשות שלי'}</Link>
+            {staff && (
+              <Link href="/?page=notes" className={tab('notes')}>
+                הערות
+                {newNotes > 0 && <span className="ms-1 rounded-full bg-red-600 px-1.5 text-[11px] text-white">{newNotes}</span>}
+              </Link>
+            )}
+            <Link href="/?page=requests" className={tab('requests')}>{staff ? 'בקשות תלמידים' : 'הבקשות שלי'}</Link>
             {profile.is_admin && <Link href="/?page=admin" className={tab('admin')}>ניהול משתמשים</Link>}
           </nav>
           <div className="ms-auto flex items-center gap-3 text-sm">
@@ -26,11 +49,23 @@ export default function AppShell({ profile, page, children }: { profile: Profile
               <div className="text-xs text-slate-500">{ROLE_LABEL[profile.role]}</div>
             </div>
             <VersionMenu />
-            <button className="btn-ghost" type="button" onClick={() => logout()}>יציאה</button>
+            <button className="btn-ghost" type="button" onClick={() => setAskLogout(true)}>יציאה</button>
           </div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl p-4">{children}</main>
+
+      {askLogout && (
+        <ConfirmDialog
+          title="יציאה מהאפליקציה"
+          message="האם את.ה בטוחים שאתם רוצים לצאת מהאפליקציה?"
+          confirmLabel="אישור"
+          cancelLabel="ביטול"
+          pending={leaving}
+          onCancel={() => setAskLogout(false)}
+          onConfirm={async () => { setLeaving(true); await logout(); }}
+        />
+      )}
     </div>
   );
 }

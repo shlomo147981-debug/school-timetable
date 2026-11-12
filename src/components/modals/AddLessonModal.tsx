@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import Modal from '../ui/Modal';
-import { addLesson } from '@/lib/api';
-import { addMinutes, heDate, schoolDow, SCHOOL_DAYS } from '@/lib/dates';
-import type { Person } from '@/lib/types';
+import { addLessons } from '@/lib/api';
+import { addMinutes, heDate, schoolDow, weekDates } from '@/lib/dates';
+import type { EditScope, Person } from '@/lib/types';
+import ScopePicker from '../schedule/ScopePicker';
 
-/** כפתור "+" — הוספת שיעור/פעילות ביום מסוים, חד-פעמי או קבוע */
+/** כפתור "+" — הוספת שיעור/פעילות: רק בתאריך הזה / רק השבוע / כל הימים / לכל השנה */
 export default function AddLessonModal({
   date, classId, defaultStart, teachers, student, onClose, onSaved,
 }: {
@@ -14,7 +15,7 @@ export default function AddLessonModal({
   student: Person | null; onClose: () => void; onSaved: () => void;
 }) {
   const dow = schoolDow(date) ?? 1;
-  const [recurring, setRecurring] = useState(false);
+  const [scope, setScope] = useState<EditScope>('once');
   const [personal, setPersonal] = useState(false);
   const [subject, setSubject] = useState('');
   const [teacherId, setTeacherId] = useState('');
@@ -27,11 +28,16 @@ export default function AddLessonModal({
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setPending(true); setError('');
-    const r = await addLesson({
-      classId, date, dayOfWeek: dow, recurring, studentId: personal ? student?.id : null,
+    const base = {
+      classId, studentId: personal ? student?.id : null,
       subject, teacher_id: teacherId || null, co_teacher_id: null, teacher_label: null,
       start_time: start, end_time: end, room,
-    });
+    };
+    // once: חד-פעמי היום | week: חד-פעמי בכל ימי השבוע | allDays: קבוע בכל הימים | year: קבוע ביום הזה
+    const days = scope === 'once' || scope === 'year' ? [date] : weekDates(date);
+    const r = await addLessons(days.map((d) => ({
+      ...base, date: scope === 'allDays' ? date : d, dayOfWeek: schoolDow(d) ?? dow, recurring: scope === 'allDays' || scope === 'year',
+    })));
     setPending(false);
     if (r.ok) { onSaved(); onClose(); } else setError(r.error);
   };
@@ -39,12 +45,7 @@ export default function AddLessonModal({
   return (
     <Modal title="הוספת שיעור / פעילות" subtitle={heDate(date, { weekday: 'long', day: 'numeric', month: 'long' })} onClose={onClose}>
       <form className="space-y-4" onSubmit={save}>
-        <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 text-sm">
-          <button type="button" onClick={() => setRecurring(false)}
-            className={`rounded-md px-2 py-1.5 ${!recurring ? 'bg-white font-medium shadow-sm' : 'text-slate-600'}`}>חד-פעמי</button>
-          <button type="button" onClick={() => setRecurring(true)}
-            className={`rounded-md px-2 py-1.5 ${recurring ? 'bg-white font-medium shadow-sm' : 'text-slate-600'}`}>כל יום {SCHOOL_DAYS[dow - 1]}</button>
-        </div>
+        <ScopePicker value={scope} onChange={setScope} date={date} />
         <div>
           <label className="label" htmlFor="al-subject">מקצוע / פעילות</label>
           <input id="al-subject" className="input" required value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="למשל: תגבור מתמטיקה / הרצאה" />

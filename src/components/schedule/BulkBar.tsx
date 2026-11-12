@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { addCalendarEvent, applyChanges, restoreChanges, type ChangeRow } from '@/lib/api';
 import { addMinutes, hhmm } from '@/lib/dates';
 import type { Occurrence } from '@/lib/types';
+import { SPECIAL_NOTE } from '@/lib/types';
+import SpecialActivityPicker, { specialCalendarKind, specialTitle, type SpecialValue } from './SpecialActivityPicker';
 
 /** סרגל פעולות גורפות ב"מצב עריכה" — חל על כל השיעורים המסומנים (שינוי חד-פעמי) */
 export default function BulkBar({
@@ -11,8 +13,7 @@ export default function BulkBar({
 }: { selected: Occurrence[]; classId: string; onDone: (msg: string) => void; onClear: () => void; onExit: () => void }) {
   const [mode, setMode] = useState<'none' | 'shift' | 'special'>('none');
   const [minutes, setMinutes] = useState(15);
-  const [title, setTitle] = useState('');
-  const [kind, setKind] = useState<'trip' | 'event'>('event');
+  const [special, setSpecial] = useState<SpecialValue>({ preset: 'trip', text: '' });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const n = selected.length;
@@ -45,16 +46,24 @@ export default function BulkBar({
     new_start_time: addMinutes(hhmm(o.start), minutes),
     new_end_time: addMinutes(hhmm(o.end), minutes),
   }))), `${n} שיעורים הוזזו ב-${minutes} דקות`);
-  const special = () => run(async () => {
-    if (!title.trim()) return { ok: false, error: 'יש להזין שם לפעילות' };
-    const r = await applyChanges(selected.map((o) => ({ ...base(o), kind: 'cancelled', note: title.trim() })));
-    if (!r.ok) return r;
-    for (const d of [...new Set(selected.map((o) => o.date))].sort()) {
-      const e = await addCalendarEvent({ classId, kind, title, startDate: d, endDate: d });
-      if (!e.ok) return e;
-    }
-    return { ok: true };
-  }, `הוחלף בפעילות: ${title}`);
+  // החלפה בפעילות מיוחדת: כל שיעור מסומן מציג את שם הפעילות; טיול/יום שיא נוספים גם ללוח החודשי
+  const applySpecial = () => {
+    const title = specialTitle(special);
+    if (!title) { setError('כתבו מהי הפעילות או הסיבה'); return; }
+    const calKind = specialCalendarKind(special);
+    return run(async () => {
+      const r = await applyChanges(selected.map((o) => ({
+        lesson_id: o.lesson.id, change_date: o.date, kind: 'modified', new_subject: title, note: SPECIAL_NOTE,
+        new_start_time: o.change?.new_start_time ?? null, new_end_time: o.change?.new_end_time ?? null,
+      })));
+      if (!r.ok || !calKind) return r;
+      for (const d of [...new Set(selected.map((o) => o.date))].sort()) {
+        const e = await addCalendarEvent({ classId, kind: calKind, title, startDate: d, endDate: d });
+        if (!e.ok) return e;
+      }
+      return { ok: true };
+    }, `הוחלף בפעילות: ${title}`);
+  };
 
   return (
     <div className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur">
@@ -82,13 +91,9 @@ export default function BulkBar({
           </div>
         )}
         {mode === 'special' && (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <select className="input w-auto" value={kind} onChange={(e) => setKind(e.target.value as 'trip' | 'event')} aria-label="סוג">
-              <option value="event">יום שיא / אירוע</option>
-              <option value="trip">טיול</option>
-            </select>
-            <input className="input flex-1" placeholder="שם הפעילות (למשל: טיול שנתי)" value={title} onChange={(e) => setTitle(e.target.value)} />
-            <button className="btn-primary" disabled={pending} onClick={special}>החלפה</button>
+          <div className="flex flex-wrap items-end gap-2 text-sm">
+            <div className="min-w-[16rem] flex-1"><SpecialActivityPicker value={special} onChange={(v) => { setSpecial(v); setError(''); }} /></div>
+            <button className="btn-primary" disabled={pending} onClick={applySpecial}>החלפה</button>
           </div>
         )}
         {error && <p role="alert" className="text-sm text-red-700">{error}</p>}

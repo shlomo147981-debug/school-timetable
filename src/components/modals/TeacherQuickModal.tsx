@@ -163,7 +163,7 @@ export default function TeacherQuickModal({
       )}
 
       {tab === 'edit' && canEditSchedule && (
-        <LessonEditor occ={occ} teachers={teachers} onSaved={() => { onChanged(); onClose(); }} />
+        <LessonEditor occ={occ} classId={classId} teachers={teachers} onSaved={() => { onChanged(); onClose(); }} />
       )}
     </Modal>
   );

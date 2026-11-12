@@ -169,3 +169,9 @@ export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
 };
 
 export const isStaff = (r: Role) => r === 'teacher' || r === 'homeroom';
+
+/** סימון בשדה note של lesson_changes: השיעור הוחלף בפעילות מיוחדת */
+export const SPECIAL_NOTE = 'פעילות מיוחדת';
+
+/** היקף החלת עריכה (כמו "אירוע זה / כל האירועים" ביומן) */
+export type EditScope = 'once' | 'week' | 'allDays' | 'year';

@@ -2,7 +2,7 @@
 
 import { hhmm } from '@/lib/dates';
 import type { Occurrence } from '@/lib/types';
-import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL } from '@/lib/types';
+import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL, SPECIAL_NOTE } from '@/lib/types';
 
 const EVENT_STYLE: Record<string, string> = {
   praise: 'bg-emerald-100 text-emerald-800',
@@ -16,6 +16,7 @@ export default function LessonCard({
   occ, compact = false, onClick, selectable = false, selected = false,
 }: { occ: Occurrence; compact?: boolean; onClick: () => void; selectable?: boolean; selected?: boolean }) {
   const cancelled = occ.status === 'cancelled';
+  const special = occ.change?.note === SPECIAL_NOTE && !cancelled;
   const changed = occ.status !== 'normal' && !cancelled;
   const visibleEvents = occ.events.filter((e) => !e.retracted);
 
@@ -27,6 +28,7 @@ export default function LessonCard({
       className={`group relative w-full rounded-lg border p-2.5 text-start transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 ${
         selected ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-500'
         : cancelled ? 'border-slate-200 bg-slate-50 opacity-70'
+        : special ? 'border-fuchsia-300 bg-fuchsia-50'
         : occ.personal ? 'border-violet-200 bg-violet-50'
         : changed ? 'border-amber-300 bg-amber-50'
         : 'border-slate-200 bg-white'
@@ -51,7 +53,9 @@ export default function LessonCard({
 
       <div className="mt-1.5 flex flex-wrap gap-1">
         {occ.personal && <span className="rounded bg-violet-200 px-1.5 py-0.5 text-[11px] text-violet-900">אישי</span>}
-        {occ.status !== 'normal' && (
+        {special ? (
+          <span className="rounded bg-fuchsia-200 px-1.5 py-0.5 text-[11px] text-fuchsia-900">✨ פעילות מיוחדת</span>
+        ) : occ.status !== 'normal' && (
           <span className={`rounded px-1.5 py-0.5 text-[11px] ${cancelled ? 'bg-slate-200 text-slate-700' : 'bg-amber-200 text-amber-900'}`}>
             {CHANGE_LABEL[occ.status]}
           </span>
@@ -69,7 +73,7 @@ export default function LessonCard({
         ))}
       </div>
 
-      {!compact && occ.changeNote && <p className="mt-1 text-xs text-amber-800">{occ.changeNote}</p>}
+      {!compact && occ.changeNote && occ.changeNote !== SPECIAL_NOTE && <p className="mt-1 text-xs text-amber-800">{occ.changeNote}</p>}
     </button>
   );
 }
