@@ -26,7 +26,10 @@ const must = ({ data, error }) => { if (error) throw error; return data; };
 
 const existing = await admin.from('classes').select('id').limit(1);
 if (existing.error) {
-  console.error('✖ הטבלאות לא קיימות עדיין. הריצו קודם את supabase/SETUP_ALL.sql ב-SQL Editor.\n ', existing.error.message);
+  const network = /fetch failed/i.test(existing.error.message);
+  console.error(network
+    ? '✖ אין חיבור רשת ל-Supabase (בדקו כתובת / proxy: NODE_USE_ENV_PROXY=1).'
+    : '✖ הטבלאות לא קיימות עדיין. הריצו קודם את supabase/SETUP_ALL.sql ב-SQL Editor.', '\n ', existing.error.message);
   process.exit(1);
 }
 if (existing.data.length) {
