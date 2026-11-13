@@ -102,6 +102,7 @@ export default function ScheduleScreen({ profile }: { profile: Profile }) {
             students={data.ctx.students}
             teachers={data.ctx.teachers}
             canEditSchedule={data.ctx.canEditSchedule}
+            editableClasses={(profile.is_admin ? data.ctx.classes : data.ctx.classes.filter((c) => c.homeroom_teacher_id === profile.id)).map((c) => ({ id: c.id, name: c.name }))}
             onChanged={refresh}
           />
         </div>

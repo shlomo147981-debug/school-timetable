@@ -34,6 +34,10 @@ export interface Lesson {
   teacher_id: string | null;
   co_teacher_id: string | null;
   teacher_label: string | null;
+  /** צבע תצוגה (אחרי מיגרציה 0004) */
+  color?: string | null;
+  /** תיאור/הערה קבועה לתלמידים ולהורים (אחרי מיגרציה 0004) */
+  note?: string | null;
   student_id: string | null;
   subject: string;
   room: string | null;
@@ -57,6 +61,7 @@ export interface LessonChange {
   new_end_time: string | null;
   new_room: string | null;
   new_subject: string | null;
+  new_color?: string | null;
   note: string | null;
   substitute: { full_name: string } | null;
 }
@@ -172,6 +177,11 @@ export const isStaff = (r: Role) => r === 'teacher' || r === 'homeroom';
 
 /** סימון בשדה note של lesson_changes: השיעור הוחלף בפעילות מיוחדת */
 export const SPECIAL_NOTE = 'פעילות מיוחדת';
+export const isSpecialNote = (n: string | null | undefined) => !!n && n.startsWith(SPECIAL_NOTE);
+/** תיאור שהמחנך הוסיף לפעילות מיוחדת ("פעילות מיוחדת: …") */
+export const specialDetail = (n: string | null | undefined) => (isSpecialNote(n) ? n!.slice(SPECIAL_NOTE.length).replace(/^:\s*/, '') : '');
+
+export const EARLY_DISMISSAL_PREFIX = 'סיום יום לימודים מוקדם בשעה';
 
 /** היקף החלת עריכה (כמו "אירוע זה / כל האירועים" ביומן) */
 export type EditScope = 'once' | 'week' | 'allDays' | 'year';

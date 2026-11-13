@@ -4,6 +4,27 @@ import { getSupabase } from './supabase/client';
 import type { AssignmentType, ExceptionType, Lesson, LessonChangeKind, Profile, RequestKind, Role } from './types';
 
 export type Result = { ok: true } | { ok: false; error: string };
+
+// ---- תאימות לאחור: לפני הרצת מיגרציה 0004 אין עמודות color/note/new_color ----
+const EXTRA_KEYS = ['color', 'note', 'new_color'] as const;
+let extrasSupported = true;
+/** האם מסד הנתונים כבר תומך בצבע ובהערה קבועה */
+export const dbSupportsExtras = () => extrasSupported;
+const isMissingColumn = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === 'PGRST204' || e.code === '42703' || /column .*(does not exist|schema cache)/i.test(e.message ?? ''));
+const strip = <T extends Record<string, unknown>>(o: T, keepNote = false) => {
+  const c: Record<string, unknown> = { ...o };
+  EXTRA_KEYS.forEach((k) => { if (!(keepNote && k === 'note')) delete c[k]; });
+  return c as T;
+};
+/** מריץ כתיבה; אם העמודות החדשות חסרות — מנסה שוב בלעדיהן */
+async function writeCompat<P>(payload: P, write: (p: P) => PromiseLike<{ error: { code?: string; message?: string } | null; count?: number | null }>, keepNote = false) {
+  const clean = (p: P): P => (Array.isArray(p) ? (p.map((x) => strip(x, keepNote)) as P) : (strip(p as Record<string, unknown>, keepNote) as P));
+  if (!extrasSupported) return write(clean(payload));
+  const r = await write(payload);
+  if (isMissingColumn(r.error)) { extrasSupported = false; return write(clean(payload)); }
+  return r;
+}
 const fail = (error: string): Result => ({ ok: false, error });
 const ok = (): Result => ({ ok: true });
 
@@ -141,6 +162,8 @@ export async function resolveRequest(input: {
 // =====================================================================
 export interface LessonFields {
   subject: string;
+  color?: string | null;
+  note?: string | null;
   teacher_id: string | null;
   co_teacher_id: string | null;
   teacher_label: string | null;
@@ -150,6 +173,8 @@ export interface LessonFields {
 }
 
 const cleanFields = (f: LessonFields) => ({
+  ...(f.color !== undefined ? { color: f.color || null } : {}),
+  ...(f.note !== undefined ? { note: f.note?.trim() || null } : {}),
   subject: f.subject.trim(),
   teacher_id: f.teacher_id || null,
   co_teacher_id: f.co_teacher_id || null,
@@ -167,7 +192,7 @@ const validate = (f: LessonFields) =>
 /** שינוי קבוע בתבנית השבועית */
 export async function updateLessonPermanent(lessonId: string, f: LessonFields): Promise<Result> {
   const v = validate(f); if (v) return fail(v);
-  const { error, count } = await getSupabase().from('lessons').update(cleanFields(f), { count: 'exact' }).eq('id', lessonId);
+  const { error, count } = await writeCompat(cleanFields(f), (p) => getSupabase().from('lessons').update(p, { count: 'exact' }).eq('id', lessonId));
   if (error || !count) return fail('אין הרשאה לערוך את המערכת הקבועה');
   return ok();
 }
@@ -212,6 +237,7 @@ export interface ChangeRow {
   new_end_time?: string | null;
   new_room?: string | null;
   new_subject?: string | null;
+  new_color?: string | null;
   note?: string | null;
 }
 
@@ -220,9 +246,10 @@ export async function applyChanges(rows: ChangeRow[]): Promise<Result> {
   if (!rows.length) return fail('לא נבחרו שיעורים');
   const full = rows.map((r) => ({
     substitute_teacher_id: null, new_start_time: null, new_end_time: null,
-    new_room: null, new_subject: null, note: null, ...r,
+    new_room: null, new_subject: null, note: null, new_color: null, ...r,
   }));
-  const { error } = await getSupabase().from('lesson_changes').upsert(full, { onConflict: 'lesson_id,change_date' });
+  // lesson_changes.note קיים מאז 0001 — שומרים אותו גם לפני מיגרציה 0004
+  const { error } = await writeCompat(full, (p) => getSupabase().from('lesson_changes').upsert(p, { onConflict: 'lesson_id,change_date' }), true);
   return error ? fail('השמירה נכשלה (אין הרשאה?)') : ok();
 }
 
@@ -233,6 +260,24 @@ export async function restoreChanges(items: { lessonId: string; date: string }[]
     const { error } = await supabase.from('lesson_changes').delete().eq('lesson_id', it.lessonId).eq('change_date', it.date);
     if (error) return fail('השחזור נכשל');
   }
+  return ok();
+}
+
+/** כל השיעורים של כיתה (לא אישיים) — לבחירת שיעור בעורך */
+export async function fetchClassLessons(classId: string): Promise<Lesson[]> {
+  const { data } = await getSupabase()
+    .from('lessons')
+    .select('*, teacher:profiles!lessons_teacher_id_fkey(full_name), co_teacher:profiles!lessons_co_teacher_id_fkey(full_name)')
+    .eq('class_id', classId)
+    .is('student_id', null)
+    .order('start_time');
+  return (data ?? []) as Lesson[];
+}
+
+export async function deleteCalendarEvent(id: string): Promise<Result> {
+  const { error, count } = await getSupabase().from('calendar_events').delete({ count: 'exact' }).eq('id', id);
+  if (error) return fail('המחיקה נכשלה');
+  if (!count) return fail('אין הרשאה למחוק את האירוע');
   return ok();
 }
 
@@ -306,7 +351,7 @@ export async function fetchSlotLessons(classId: string, startTime: string, stude
 export async function updateLessonsPartial(ids: string[], patch: Partial<LessonFields>): Promise<Result> {
   if (!ids.length) return fail('לא נמצאו שיעורים לעדכון');
   if (patch.start_time && patch.end_time && patch.end_time <= patch.start_time) return fail('שעת הסיום חייבת להיות אחרי שעת ההתחלה');
-  const { error, count } = await getSupabase().from('lessons').update(patch, { count: 'exact' }).in('id', ids);
+  const { error, count } = await writeCompat(patch, (p) => getSupabase().from('lessons').update(p, { count: 'exact' }).in('id', ids));
   if (error || !count) return fail('אין הרשאה לערוך את המערכת הקבועה');
   return ok();
 }
@@ -316,14 +361,14 @@ export async function addLessons(rows: (LessonFields & {
   classId: string; date: string; dayOfWeek: number; recurring: boolean; studentId?: string | null;
 })[]): Promise<Result> {
   for (const r of rows) { const v = validate(r); if (v) return fail(v); }
-  const { error } = await getSupabase().from('lessons').insert(rows.map((r) => ({
+  const { error } = await writeCompat(rows.map((r) => ({
     ...cleanFields(r),
     class_id: r.classId,
     student_id: r.studentId || null,
     day_of_week: r.dayOfWeek,
     specific_date: r.recurring ? null : r.date,
     valid_from: r.recurring ? r.date : null,
-  })));
+  })), (p) => getSupabase().from('lessons').insert(p));
   return error ? fail('הוספת השיעורים נכשלה (אין הרשאה?)') : ok();
 }
 

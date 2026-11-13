@@ -43,7 +43,7 @@ export default function OtaGate({ children }: { children: React.ReactNode }) {
   if (state === 'ready') return <>{children}</>;
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-slate-500">
-      <div className="flex h-14 w-14 animate-pulse items-center justify-center rounded-2xl bg-brand-600 text-3xl text-white">📅</div>
+      <div className="flex h-14 w-14 animate-pulse items-center justify-center rounded-2xl bg-brand-600 text-3xl text-white">🔔</div>
       {state === 'updating' && <p className="text-sm">מעדכן לגרסה {target}…</p>}
     </div>
   );

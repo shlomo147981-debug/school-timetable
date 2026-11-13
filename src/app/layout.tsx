@@ -3,9 +3,9 @@ import MobileBridge from '@/components/MobileBridge';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'מערכת שעות',
+  title: 'הצלצול',
   description: 'מערכת שעות וניהול כיתה',
-  applicationName: 'מערכת שעות',
+  applicationName: 'הצלצול',
 };
 
 // מובייל: viewport-fit=cover מאפשר שימוש ב-safe-area (נוטש / שורת סטטוס),

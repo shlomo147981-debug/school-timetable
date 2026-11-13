@@ -3,12 +3,11 @@
 import { useState, useTransition } from 'react';
 import Modal from '../ui/Modal';
 import { addAssignment, reportException } from '@/lib/api';
-import LessonEditor from './LessonEditor';
 import { heDate, hhmm } from '@/lib/dates';
 import type { AssignmentType, ExceptionType, Occurrence, Person } from '@/lib/types';
 import { ASSIGNMENT_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL } from '@/lib/types';
 
-type Tab = 'exception' | 'assignment' | 'edit';
+type Tab = 'exception' | 'assignment';
 
 const EXCEPTION_ICONS: Record<ExceptionType, string> = {
   absence: '🚫', late: '⏰', missing_equipment: '🎒', misbehavior: '⚠️', praise: '⭐',
@@ -21,10 +20,10 @@ const EXCEPTION_ICONS: Record<ExceptionType, string> = {
  *  3. (מחנך/מנהל) עריכת שיעור: חד-פעמי או קבוע — מקצוע, מורה, שעות, ביטול
  */
 export default function TeacherQuickModal({
-  occurrence: occ, classId, students, preselectedStudentId, teachers, canEditSchedule, onChanged, onClose,
+  occurrence: occ, classId, students, preselectedStudentId, teachers, canEditSchedule, onChanged, onOpenEditor, onClose,
 }: {
   occurrence: Occurrence; classId: string; students: Person[]; preselectedStudentId: string | null;
-  teachers: Person[]; canEditSchedule: boolean; onChanged: () => void; onClose: () => void;
+  teachers: Person[]; canEditSchedule: boolean; onChanged: () => void; onOpenEditor: (o: Occurrence) => void; onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('exception');
   const [pending, start] = useTransition();
@@ -54,7 +53,6 @@ export default function TeacherQuickModal({
   const tabs: { id: Tab; label: string }[] = [
     { id: 'exception', label: 'הערה חריגה' },
     { id: 'assignment', label: 'סיכום שיעור / משימה' },
-    ...(canEditSchedule ? [{ id: 'edit' as Tab, label: 'עריכת שיעור' }] : []),
   ];
 
   const shownStudents = students.filter((s) => s.full_name.includes(filter.trim()));
@@ -65,6 +63,12 @@ export default function TeacherQuickModal({
       subtitle={`${heDate(occ.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${hhmm(occ.start)}–${hhmm(occ.end)}${occ.room ? ` · חדר ${occ.room}` : ''}`}
       onClose={onClose}
     >
+      {canEditSchedule && (
+        <button type="button" onClick={() => onOpenEditor(occ)}
+          className="btn mb-3 w-full border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100">
+          ✏️ עריכת השיעור (שינוי · ביטול · פעילות מיוחדת · צבע)
+        </button>
+      )}
       <div className="mb-4 flex gap-1 rounded-lg bg-slate-100 p-1" role="tablist">
         {tabs.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id}
@@ -162,9 +166,6 @@ export default function TeacherQuickModal({
         </form>
       )}
 
-      {tab === 'edit' && canEditSchedule && (
-        <LessonEditor occ={occ} classId={classId} teachers={teachers} onSaved={() => { onChanged(); onClose(); }} />
-      )}
     </Modal>
   );
 }

@@ -4,14 +4,13 @@ import { useMemo, useState } from 'react';
 import { useNav } from '@/lib/nav';
 import type { Assignment, CalendarEvent, Occurrence, Person, Role, StudentEvent, View } from '@/lib/types';
 import { isStaff } from '@/lib/types';
-import { hhmm } from '@/lib/dates';
 import DayView from './DayView';
 import WeekView from './WeekView';
 import MonthView from './MonthView';
 import BulkBar from './BulkBar';
 import TeacherQuickModal from '../modals/TeacherQuickModal';
 import RequestModal from '../modals/RequestModal';
-import AddLessonModal from '../modals/AddLessonModal';
+import EventEditor, { type EditorSaved } from '../modals/EventEditor';
 
 export interface BoardProps {
   view: View;
@@ -28,6 +27,8 @@ export interface BoardProps {
   students: Person[];
   teachers: Person[];
   canEditSchedule: boolean;
+  /** כיתות שהמשתמש רשאי לערוך (לבורר הכיתה בעורך) */
+  editableClasses: { id: string; name: string }[];
   /** נקרא אחרי שמירה — טוען מחדש את הנתונים */
   onChanged: () => void;
 }
@@ -46,9 +47,15 @@ export default function ScheduleBoard(props: BoardProps) {
   const [selected, setSelected] = useState<Occurrence | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [addFor, setAddFor] = useState<string | null>(null);
+  const [editor, setEditor] = useState<{ date: string; occurrence: Occurrence | null } | null>(null);
   const [toast, setToast] = useState('');
   const { navigate } = useNav();
+  const openEditor = (date: string, occurrence: Occurrence | null = null) => { setSelected(null); setEditor({ date, occurrence }); };
+  const afterSave = (msg: string, where: EditorSaved) => {
+    props.onChanged(); notify(msg);
+    if (where.classId !== props.classId) navigate({ class: where.classId, date: where.date, student: null });
+    else if (where.date !== props.date) navigate({ date: where.date });
+  };
   const staff = isStaff(props.viewerRole) || props.canEditSchedule;
 
   const openDay = (date: string) => navigate({ view: 'day', date });
@@ -70,13 +77,9 @@ export default function ScheduleBoard(props: BoardProps) {
       keys.forEach((k) => (all ? n.delete(k) : n.add(k)));
       return n;
     }),
-    onAdd: setAddFor,
+    onAdd: (date) => openEditor(date),
   };
 
-  const lastEnd = (date: string) => {
-    const list = props.occurrences.filter((o) => o.date === date && o.status !== 'cancelled');
-    return list.length ? hhmm(list[list.length - 1].end) : '08:15';
-  };
 
   return (
     <>
@@ -98,11 +101,11 @@ export default function ScheduleBoard(props: BoardProps) {
       <div className={editMode ? 'pb-32' : ''}>
         {props.view === 'day' && (
           <DayView date={props.date} occurrences={props.occurrences} calendar={props.calendar}
-            onSelect={setSelected} edit={edit} />
+            onSelect={setSelected} edit={edit} onCalendarChanged={props.onChanged} />
         )}
         {props.view === 'week' && (
           <WeekView date={props.date} today={props.today} occurrences={props.occurrences} calendar={props.calendar}
-            onSelect={setSelected} edit={edit} />
+            onSelect={setSelected} edit={edit} onCalendarChanged={props.onChanged} />
         )}
         {props.view === 'month' && (
           <MonthView date={props.date} today={props.today} calendar={props.calendar}
@@ -130,6 +133,7 @@ export default function ScheduleBoard(props: BoardProps) {
           teachers={props.teachers}
           canEditSchedule={props.canEditSchedule}
           onChanged={props.onChanged}
+          onOpenEditor={(o) => openEditor(o.date, o)}
           onClose={() => setSelected(null)}
         />
       )}
@@ -137,16 +141,30 @@ export default function ScheduleBoard(props: BoardProps) {
         <RequestModal occurrence={selected} studentId={props.studentId} homeroomId={props.homeroomId}
           onChanged={props.onChanged} onClose={() => setSelected(null)} />
       )}
-      {addFor && (
-        <AddLessonModal
-          date={addFor}
-          classId={props.classId}
-          defaultStart={lastEnd(addFor)}
+      {editor && (
+        <EventEditor
+          classes={props.editableClasses.length ? props.editableClasses : [{ id: props.classId, name: '' }]}
+          initialClassId={props.classId}
           teachers={props.teachers}
-          student={props.students.find((s) => s.id === props.studentId) ?? null}
-          onClose={() => setAddFor(null)}
-          onSaved={() => { props.onChanged(); notify('השיעור נוסף'); }}
+          date={editor.date}
+          occurrence={editor.occurrence}
+          onClose={() => setEditor(null)}
+          onSaved={afterSave}
         />
+      )}
+
+      {/* כפתור + צף (פינה שמאלית תחתונה) — מחנך / מנהל */}
+      {props.canEditSchedule && !editMode && !editor && !selected && (
+        <button
+          type="button"
+          aria-label="הוספה / עריכה במערכת"
+          title="הוספה / עריכה"
+          onClick={() => openEditor(props.date)}
+          className="fixed left-5 z-40 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-3xl font-light text-white shadow-lg shadow-brand-600/30 transition hover:bg-brand-700 active:scale-95"
+          style={{ bottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+        >
+          +
+        </button>
       )}
     </>
   );

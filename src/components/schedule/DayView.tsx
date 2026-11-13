@@ -9,8 +9,8 @@ import DayHeaderEvents from './DayHeaderEvents';
 
 /** תצוגת ציר זמן של שיעורי היום, כולל הפסקות */
 export default function DayView({
-  date, occurrences, calendar, onSelect, edit,
-}: { date: string; occurrences: Occurrence[]; calendar: CalendarEvent[]; onSelect: (o: Occurrence) => void; edit: EditProps }) {
+  date, occurrences, calendar, onSelect, edit, onCalendarChanged,
+}: { date: string; occurrences: Occurrence[]; calendar: CalendarEvent[]; onSelect: (o: Occurrence) => void; edit: EditProps; onCalendarChanged?: () => void }) {
   const holiday = holidayOn(date, calendar);
   const list = occurrences.filter((o) => o.date === date);
   const active = list.filter((o) => o.status !== 'cancelled');
@@ -27,7 +27,7 @@ export default function DayView({
   return (
     <div className="card p-4">
       <div className="mb-4 flex items-start gap-2">
-        <div className="flex-1"><DayHeaderEvents date={date} calendar={calendar} /></div>
+        <div className="flex-1"><DayHeaderEvents date={date} calendar={calendar} canEdit={edit.canEdit} onChanged={onCalendarChanged} /></div>
         {edit.editMode && list.length > 0 && (
           <button className="btn bg-slate-100 text-xs" onClick={() => edit.onSelectDay(date)}>
             {allPicked ? 'בטל בחירת יום' : 'בחר יום שלם'}

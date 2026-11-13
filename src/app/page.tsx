@@ -16,7 +16,7 @@ import OtaGate from '@/components/OtaGate';
 function Splash() {
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <div className="flex h-14 w-14 animate-pulse items-center justify-center rounded-2xl bg-brand-600 text-3xl text-white">📅</div>
+      <div className="flex h-14 w-14 animate-pulse items-center justify-center rounded-2xl bg-brand-600 text-3xl text-white">🔔</div>
     </div>
   );
 }

@@ -9,10 +9,10 @@ import DayHeaderEvents from './DayHeaderEvents';
 
 /** לוח שבועי מלא ראשון–חמישי. במובייל הימים נערמים אנכית. */
 export default function WeekView({
-  date, today, occurrences, calendar, onSelect, edit,
+  date, today, occurrences, calendar, onSelect, edit, onCalendarChanged,
 }: {
   date: string; today: string; occurrences: Occurrence[]; calendar: CalendarEvent[];
-  onSelect: (o: Occurrence) => void; edit: EditProps;
+  onSelect: (o: Occurrence) => void; edit: EditProps; onCalendarChanged?: () => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
@@ -36,7 +36,7 @@ export default function WeekView({
                 {allPicked ? 'בטל בחירת יום' : 'בחר יום שלם'}
               </button>
             )}
-            <div className="mb-2"><DayHeaderEvents date={d} calendar={calendar} /></div>
+            <div className="mb-2"><DayHeaderEvents date={d} calendar={calendar} canEdit={edit.canEdit} onChanged={onCalendarChanged} /></div>
             <div className="flex flex-1 flex-col gap-2">
               {holiday ? null : list.length === 0 ? (
                 <p className="py-6 text-center text-xs text-slate-400">אין שיעורים</p>

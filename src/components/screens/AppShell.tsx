@@ -33,7 +33,7 @@ export default function AppShell({ profile, page, children }: { profile: Profile
     <div className="min-h-screen">
       <header className="safe-top sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <button type="button" onClick={() => go('schedule')} className="text-lg font-bold text-brand-700">📅 מערכת שעות</button>
+          <button type="button" onClick={() => go('schedule')} className="text-lg font-bold text-brand-700">🔔 הצלצול</button>
           <nav className="flex flex-wrap gap-1 text-sm">
             <button type="button" onClick={() => go('schedule')} className={tab('schedule')} aria-current={page === 'schedule' ? 'page' : undefined}>מערכת</button>
             {staff && (

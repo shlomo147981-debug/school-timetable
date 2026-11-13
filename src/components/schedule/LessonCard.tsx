@@ -2,7 +2,8 @@
 
 import { hhmm } from '@/lib/dates';
 import type { Occurrence } from '@/lib/types';
-import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL, SPECIAL_NOTE } from '@/lib/types';
+import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL, isSpecialNote, specialDetail } from '@/lib/types';
+import { colorDef } from '@/lib/colors';
 
 const EVENT_STYLE: Record<string, string> = {
   praise: 'bg-emerald-100 text-emerald-800',
@@ -16,7 +17,9 @@ export default function LessonCard({
   occ, compact = false, onClick, selectable = false, selected = false,
 }: { occ: Occurrence; compact?: boolean; onClick: () => void; selectable?: boolean; selected?: boolean }) {
   const cancelled = occ.status === 'cancelled';
-  const special = occ.change?.note === SPECIAL_NOTE && !cancelled;
+  const special = isSpecialNote(occ.change?.note) && !cancelled;
+  const color = colorDef(occ.change?.new_color ?? occ.lesson.color);
+  const detail = special ? specialDetail(occ.change?.note) : occ.changeNote;
   const changed = occ.status !== 'normal' && !cancelled;
   const visibleEvents = occ.events.filter((e) => !e.retracted);
 
@@ -28,6 +31,7 @@ export default function LessonCard({
       className={`group relative w-full rounded-lg border p-2.5 text-start transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 ${
         selected ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-500'
         : cancelled ? 'border-slate-200 bg-slate-50 opacity-70'
+        : color ? `border-slate-200 ${color.card}`
         : special ? 'border-fuchsia-300 bg-fuchsia-50'
         : occ.personal ? 'border-violet-200 bg-violet-50'
         : changed ? 'border-amber-300 bg-amber-50'
@@ -73,7 +77,8 @@ export default function LessonCard({
         ))}
       </div>
 
-      {!compact && occ.changeNote && occ.changeNote !== SPECIAL_NOTE && <p className="mt-1 text-xs text-amber-800">{occ.changeNote}</p>}
+      {!compact && detail && <p className="mt-1 text-xs text-amber-800">{detail}</p>}
+      {!compact && occ.lesson.note && <p className="mt-1 text-xs text-slate-600">💬 {occ.lesson.note}</p>}
     </button>
   );
 }
