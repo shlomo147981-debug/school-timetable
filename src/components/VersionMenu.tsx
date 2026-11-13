@@ -5,9 +5,10 @@ import { Capacitor } from '@capacitor/core';
 import { APP_BUILD, APP_COMMIT, APP_VERSION, RELEASE_NOTES, buildDate, fetchRemoteVersion, goToRemote, isRemoteCopy, type RemoteVersion } from '@/lib/version';
 import { getSupabase } from '@/lib/supabase/client';
 import Modal from './ui/Modal';
+import ChangePassword from './ChangePassword';
 
 /** כפתור ⚙ בכותרת: מספר גרסה + "בדוק עדכוני גרסה" */
-export default function VersionMenu() {
+export default function VersionMenu({ username }: { username: string }) {
   const [open, setOpen] = useState(false);
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<{ remote: RemoteVersion | null } | null>(null);
@@ -39,9 +40,11 @@ export default function VersionMenu() {
 
   return (
     <>
-      <button type="button" className="btn-ghost px-2" aria-label="הגדרות וגרסה" title="גרסה ועדכונים" onClick={() => { setOpen(true); setResult(null); }}>⚙️</button>
+      <button type="button" className="btn-ghost px-2" aria-label="הגדרות וגרסה" title="הגדרות: סיסמה, גרסה ועדכונים" onClick={() => { setOpen(true); setResult(null); }}>⚙️</button>
       {open && (
-        <Modal title="גרסה ועדכונים" onClose={() => setOpen(false)}>
+        <Modal title="הגדרות" onClose={() => setOpen(false)}>
+          <div className="mb-4"><ChangePassword username={username} /></div>
+          <h3 className="mb-2 font-semibold">גרסה ועדכונים</h3>
           <dl className="mb-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
             <dt className="text-slate-500">גרסה</dt><dd className="font-medium">{APP_VERSION}</dd>
             <dt className="text-slate-500">נבנתה</dt><dd>{buildDate(APP_BUILD)} <span className="text-xs text-slate-400" dir="ltr">({APP_COMMIT})</span></dd>

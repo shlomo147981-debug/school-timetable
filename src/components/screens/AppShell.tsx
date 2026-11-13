@@ -50,7 +50,7 @@ export default function AppShell({ profile, page, children }: { profile: Profile
               <div className="font-medium">{profile.full_name}</div>
               <div className="text-xs text-slate-500">{ROLE_LABEL[profile.role]}</div>
             </div>
-            <VersionMenu />
+            <VersionMenu username={profile.username} />
             <button className="btn-ghost" type="button" onClick={() => setAskLogout(true)}>יציאה</button>
           </div>
         </div>

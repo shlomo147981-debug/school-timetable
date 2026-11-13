@@ -531,3 +531,40 @@ export async function fetchClassPersonalLessons(classId: string): Promise<Lesson
     .eq('class_id', classId).not('student_id', 'is', null).order('start_time');
   return (data ?? []) as Lesson[];
 }
+
+// =====================================================================
+// גרסה 1.7.0 — שינוי סיסמה עצמי
+// =====================================================================
+
+/** חולשות נפוצות: ספרות בלבד (למשל ת"ז), קצרה מדי, זהה לשם המשתמש */
+export function passwordWeakness(pw: string, username: string): string | null {
+  if (pw.length < 8) return 'מומלץ לפחות 8 תווים';
+  if (/^\d+$/.test(pw)) return 'סיסמה של ספרות בלבד (כמו מספר ת"ז) קלה לניחוש — מומלץ לשלב אותיות';
+  if (pw.toLowerCase().includes(username.toLowerCase())) return 'הסיסמה מכילה את שם המשתמש';
+  return null;
+}
+
+/**
+ * שינוי סיסמה למשתמש המחובר: אימות הסיסמה הנוכחית ואז עדכון.
+ * (האימות מחדש גם עונה על הגדרת "Secure password change" של Supabase, אם מופעלת.)
+ */
+export async function changeMyPassword(current: string, next: string): Promise<Result> {
+  const supabase = getSupabase();
+  if (next.length < 6) return fail('הסיסמה החדשה חייבת להכיל לפחות 6 תווים');
+  if (next === current) return fail('הסיסמה החדשה זהה לסיסמה הנוכחית');
+  const { data } = await supabase.auth.getSession();
+  const email = data.session?.user.email;
+  if (!email) return fail('לא מחובר');
+
+  const check = await supabase.auth.signInWithPassword({ email, password: current });
+  if (check.error) {
+    return fail(/fetch|network/i.test(check.error.message) ? 'אין חיבור לאינטרנט' : 'הסיסמה הנוכחית שגויה');
+  }
+  const { error } = await supabase.auth.updateUser({ password: next });
+  if (!error) return ok();
+  const m = error.message ?? '';
+  if (/different from the old/i.test(m)) return fail('הסיסמה החדשה זהה לסיסמה הנוכחית');
+  if (/weak|at least|characters/i.test(m)) return fail('הסיסמה החדשה חלשה מדי לפי הגדרות המערכת — נסו סיסמה ארוכה יותר עם אותיות וספרות');
+  if (/reauthentic|nonce/i.test(m)) return fail('נדרש אימות מחדש — התנתקו, התחברו שוב ונסו שנית');
+  return fail('שינוי הסיסמה נכשל — נסו שוב');
+}

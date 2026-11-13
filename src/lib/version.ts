@@ -6,6 +6,7 @@ export const APP_COMMIT = process.env.NEXT_PUBLIC_APP_COMMIT ?? 'dev';
 /** כתובת הגרסה המקוונת (GitHub Pages) */
 /** מה חדש — מוצג בתפריט ⚙️ */
 export const RELEASE_NOTES: { version: string; notes: string[] }[] = [
+  { version: '1.7.0', notes: ['⚙️ → 🔑 שינוי סיסמה: כל משתמש יכול לשנות לעצמו את הסיסמה (עם אימות הסיסמה הנוכחית)'] },
   { version: '1.6.0', notes: [
     'מחיקה מלאה: שיעור שנמחק (−, או "🗑️ מחק שיעור") פשוט לא מופיע — בלי קו חוצה',
     'בעורך: "ביטול" (מוצג כבוטל) או "מחיקה" (נעלם), לכל הכיתה או לתלמידים נבחרים',
