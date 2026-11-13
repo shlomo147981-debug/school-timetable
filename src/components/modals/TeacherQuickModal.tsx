@@ -5,7 +5,7 @@ import Modal from '../ui/Modal';
 import { addAssignment, reportException } from '@/lib/api';
 import { heDate, hhmm } from '@/lib/dates';
 import type { AssignmentType, ExceptionType, Occurrence, Person } from '@/lib/types';
-import { ASSIGNMENT_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL } from '@/lib/types';
+import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL } from '@/lib/types';
 
 type Tab = 'exception' | 'assignment';
 
@@ -63,6 +63,21 @@ export default function TeacherQuickModal({
       subtitle={`${heDate(occ.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${hhmm(occ.start)}–${hhmm(occ.end)}${occ.room ? ` · חדר ${occ.room}` : ''}`}
       onClose={onClose}
     >
+      {occ.studentOverrides.length > 0 && (
+        <div className="mb-3 rounded-lg border border-violet-200 bg-violet-50 p-2 text-sm text-violet-900">
+          <div className="mb-1 font-medium">👤 שינויים פרטניים בשיעור הזה</div>
+          <ul className="space-y-0.5">
+            {occ.studentOverrides.map((c) => (
+              <li key={c.id}>
+                {students.find((st) => st.id === c.student_id)?.full_name ?? 'תלמיד/ה'}:{' '}
+                {c.kind === 'cancelled' ? 'לא משתתף/ת' : c.new_subject ? `במקום זה: ${c.new_subject}` : CHANGE_LABEL[c.kind]}
+                {c.until_date && <span className="text-xs text-violet-700"> (קבוע עד {heDate(c.until_date, { day: 'numeric', month: 'numeric' })})</span>}
+                {c.note && !c.note.startsWith('פעילות מיוחדת') && <span className="text-xs text-violet-700"> — {c.note}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {canEditSchedule && (
         <button type="button" onClick={() => onOpenEditor(occ)}
           className="btn mb-3 w-full border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100">

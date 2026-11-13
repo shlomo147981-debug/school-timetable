@@ -98,6 +98,13 @@ export interface StudentEvent {
   created_at: string;
 }
 
+/** דריסה פרטנית של שיעור לתלמיד אחד (טבלה lesson_student_changes, מיגרציה 0005) */
+export interface StudentChange extends LessonChange {
+  student_id: string;
+  /** null = רק בתאריך change_date; אחרת חוזר כל שבוע עד התאריך הזה */
+  until_date: string | null;
+}
+
 /** מופע קונקרטי של שיעור בתאריך מסוים, אחרי החלת שינויים */
 export interface Occurrence {
   key: string;
@@ -115,6 +122,10 @@ export interface Occurrence {
   status: 'normal' | LessonChangeKind;
   changeNote: string | null;
   personal: boolean;
+  /** השינוי במופע הוא דריסה פרטנית של התלמיד המוצג */
+  personalOverride: boolean;
+  /** (צוות, תצוגה כיתתית) דריסות פרטניות של תלמידים בשיעור הזה */
+  studentOverrides: StudentChange[];
   assignments: Assignment[];
   events: StudentEvent[];
 }

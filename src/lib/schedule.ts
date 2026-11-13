@@ -1,5 +1,5 @@
 import { addDays, schoolDow } from './dates';
-import type { Assignment, CalendarEvent, Lesson, LessonChange, Occurrence, StudentEvent } from './types';
+import type { Assignment, CalendarEvent, Lesson, LessonChange, Occurrence, StudentChange, StudentEvent } from './types';
 
 /** "צופיה / הדסה", או תווית חופשית, או ריק */
 export function lessonTeacherName(l: Lesson) {
@@ -23,9 +23,24 @@ export function buildOccurrences(args: {
   calendar: CalendarEvent[];
   assignments: Assignment[];
   events: StudentEvent[];
+  /** דריסות פרטניות (מיגרציה 0005) */
+  studentChanges?: StudentChange[];
+  /** התלמיד המוצג — הדריסות שלו גוברות על שינויי הכיתה */
+  studentId?: string | null;
 }): Occurrence[] {
-  const { from, to, lessons, changes, calendar, assignments, events } = args;
+  const { from, to, lessons, changes, calendar, assignments, events, studentChanges = [], studentId = null } = args;
   const changeMap = new Map(changes.map((c) => [`${c.lesson_id}|${c.change_date}`, c]));
+  // דריסה חלה בתאריך: מדויקת, או חוזרת (change_date ≤ d ≤ until_date). מדויקת גוברת.
+  const overridesOn = (lessonId: string, d: string) => {
+    const list = studentChanges.filter((c) => c.lesson_id === lessonId &&
+      (c.change_date === d || (c.until_date && c.change_date <= d && d <= c.until_date)));
+    const byStudent = new Map<string, StudentChange>();
+    for (const c of list) {
+      const prev = byStudent.get(c.student_id);
+      if (!prev || (c.change_date === d && prev.change_date !== d)) byStudent.set(c.student_id, c);
+    }
+    return [...byStudent.values()];
+  };
   const out: Occurrence[] = [];
 
   for (let date = from; date <= to; date = addDays(date, 1)) {
@@ -39,7 +54,9 @@ export function buildOccurrences(args: {
       if (lesson.valid_to && date > lesson.valid_to) continue;
 
       const key = `${lesson.id}|${date}`;
-      const change = changeMap.get(key);
+      const overrides = overridesOn(lesson.id, date);
+      const mine = studentId ? overrides.find((c) => c.student_id === studentId) ?? null : null;
+      const change: LessonChange | undefined = mine ?? changeMap.get(key);
       const isSub = (change?.kind === 'substitute' || change?.kind === 'modified') && !!change.substitute_teacher_id;
       out.push({
         key,
@@ -55,6 +72,8 @@ export function buildOccurrences(args: {
         status: change?.kind ?? 'normal',
         changeNote: change?.note ?? null,
         personal: lesson.student_id !== null,
+        personalOverride: !!mine,
+        studentOverrides: studentId ? [] : overrides,
         assignments: assignments.filter((a) => a.lesson_id === lesson.id && a.due_date === date),
         events: events.filter((e) => e.lesson_id === lesson.id && e.lesson_date === date),
       });

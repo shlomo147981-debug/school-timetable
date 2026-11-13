@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Assignment, CalendarEvent, Lesson, LessonChange, StudentEvent } from './types';
+import type { Assignment, CalendarEvent, Lesson, LessonChange, StudentChange, StudentEvent } from './types';
+import { supportsStudentOverrides } from './schema';
 import type { Scope } from './context';
 
 export async function loadSchedule(
@@ -44,9 +45,24 @@ export async function loadSchedule(
       ).data ?? []) as LessonChange[])
     : [];
 
+  // דריסות פרטניות: בתצוגת תלמיד — רק שלו; בתצוגה כיתתית של צוות — כל מה ש-RLS מתיר לראות
+  let studentChanges: StudentChange[] = [];
+  const wantOverrides = lessons.length && (studentId ? scope === 'personal' : true);
+  if (wantOverrides && (await supportsStudentOverrides())) {
+    let q = supabase
+      .from('lesson_student_changes')
+      .select('*, substitute:profiles!lesson_student_changes_substitute_teacher_id_fkey(full_name)')
+      .in('lesson_id', lessons.map((l) => l.id))
+      .lte('change_date', to)
+      .or(`until_date.gte.${from},change_date.gte.${from}`);
+    if (studentId) q = q.eq('student_id', studentId);
+    studentChanges = ((await q).data ?? []) as StudentChange[];
+  }
+
   return {
     lessons,
     changes,
+    studentChanges,
     calendar: (calRes.data ?? []) as CalendarEvent[],
     assignments: (asgRes.data ?? []) as Assignment[],
     events: (evRes.data ?? []) as StudentEvent[],

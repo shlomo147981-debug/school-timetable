@@ -436,3 +436,65 @@ export async function countNewNotes(sinceIso: string, myId: string): Promise<num
     .neq('reporter_id', myId);
   return count ?? 0;
 }
+
+// =====================================================================
+// גרסה 1.4.0 — מערכת פרטנית לתלמיד (lesson_student_changes)
+// =====================================================================
+
+/** סוף שנת הלימודים: 30.6 של השנה הנוכחית (או הבאה, אם כבר אחרי 1.9) */
+export function schoolYearEnd(fromDate: string) {
+  const y = Number(fromDate.slice(0, 4));
+  const m = Number(fromDate.slice(5, 7));
+  return `${m >= 9 ? y + 1 : y}-06-30`;
+}
+
+const isMissingTable = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === 'PGRST205' || e.code === '42P01' || /lesson_student_changes/.test(e.message ?? ''));
+
+/** שיעורים אישיים של תלמיד בכיתה */
+export async function fetchStudentLessons(classId: string, studentId: string): Promise<Lesson[]> {
+  const { data } = await getSupabase()
+    .from('lessons')
+    .select('*, teacher:profiles!lessons_teacher_id_fkey(full_name), co_teacher:profiles!lessons_co_teacher_id_fkey(full_name)')
+    .eq('class_id', classId).eq('student_id', studentId).order('start_time');
+  return (data ?? []) as Lesson[];
+}
+
+export interface StudentChangeRow extends ChangeRow { student_id: string; until_date?: string | null }
+
+/** דריסות פרטניות — upsert לפי (שיעור, תלמיד, תאריך) */
+export async function applyStudentChanges(rows: StudentChangeRow[]): Promise<Result> {
+  if (!rows.length) return fail('לא נבחרו שיעורים');
+  const full = rows.map((r) => ({
+    substitute_teacher_id: null, new_start_time: null, new_end_time: null, new_room: null,
+    new_subject: null, new_color: null, note: null, until_date: null, ...r,
+  }));
+  const { error } = await getSupabase().from('lesson_student_changes').upsert(full, { onConflict: 'lesson_id,student_id,change_date' });
+  if (isMissingTable(error)) return fail('כדי לשמור שינוי פרטני לתלמיד יש להריץ ב-Supabase את SETUP_UPGRADE_0005.sql (גרסה 1.4.0).');
+  return error ? fail('השמירה נכשלה (אין הרשאה?)') : ok();
+}
+
+export async function deleteStudentChanges(ids: string[]): Promise<Result> {
+  if (!ids.length) return ok();
+  const { error } = await getSupabase().from('lesson_student_changes').delete().in('id', ids);
+  return error ? fail('השחזור נכשל') : ok();
+}
+
+/**
+ * כתיבת שינויים "לפי הקשר": בתצוגה כיתתית — שינוי לכל הכיתה;
+ * בתצוגת תלמיד — דריסה פרטנית לשיעורים כיתתיים (ושינוי רגיל לשיעורים האישיים שלו).
+ * recurring: חוזר כל שבוע עד סוף השנה (רק לדריסה פרטנית).
+ */
+export async function commitChanges(
+  studentId: string | null,
+  items: { lesson: Pick<Lesson, 'id' | 'student_id'>; row: ChangeRow; recurring?: boolean }[],
+): Promise<Result> {
+  const classRows = items.filter((i) => !studentId || i.lesson.student_id).map((i) => i.row);
+  const studentRows = items.filter((i) => studentId && !i.lesson.student_id).map((i) => ({
+    ...i.row, student_id: studentId!, until_date: i.recurring ? schoolYearEnd(i.row.change_date) : null,
+  }));
+  if (classRows.length) { const r = await applyChanges(classRows); if (!r.ok) return r; }
+  if (studentRows.length) { const r = await applyStudentChanges(studentRows); if (!r.ok) return r; }
+  if (!classRows.length && !studentRows.length) return fail('לא נבחרו שיעורים');
+  return ok();
+}

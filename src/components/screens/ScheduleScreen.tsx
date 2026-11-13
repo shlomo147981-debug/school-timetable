@@ -45,7 +45,7 @@ export default function ScheduleScreen({ profile }: { profile: Profile }) {
         if (ctx.classId) {
           const { from, to } = rangeFor(view, date);
           const d = await loadSchedule(supabase, { classId: ctx.classId, studentId: ctx.studentId, scope: ctx.scope, from, to });
-          loaded = { ctx, occurrences: buildOccurrences({ from, to, ...d }), calendar: d.calendar, assignments: d.assignments, events: d.events };
+          loaded = { ctx, occurrences: buildOccurrences({ from, to, ...d, studentId: ctx.scope === 'personal' ? ctx.studentId : null }), calendar: d.calendar, assignments: d.assignments, events: d.events };
         }
         if (!cancelled) setData(loaded);
       } catch {

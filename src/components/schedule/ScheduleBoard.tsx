@@ -45,7 +45,10 @@ export interface EditProps {
 
 export default function ScheduleBoard(props: BoardProps) {
   const [selected, setSelected] = useState<Occurrence | null>(null);
-  const [editMode, setEditMode] = useState(false);
+  /** none · edit (✏️ מצב עריכה) · delete (− מצב מחיקה) */
+  const [barMode, setBarMode] = useState<'none' | 'edit' | 'delete'>('none');
+  const editMode = barMode !== 'none';
+  const student = props.students.find((s) => s.id === props.studentId) ?? null;
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [editor, setEditor] = useState<{ date: string; occurrence: Occurrence | null } | null>(null);
   const [toast, setToast] = useState('');
@@ -87,14 +90,23 @@ export default function ScheduleBoard(props: BoardProps) {
         <div className="mb-3 flex items-center gap-2">
           <button
             type="button"
-            onClick={() => { setEditMode(!editMode); setPicked(new Set()); }}
-            className={`btn ${editMode ? 'bg-brand-600 text-white' : 'bg-white text-brand-700 ring-1 ring-brand-200 hover:bg-brand-50'}`}
+            onClick={() => { setBarMode(barMode === 'edit' ? 'none' : 'edit'); setPicked(new Set()); }}
+            className={`btn ${barMode === 'edit' ? 'bg-brand-600 text-white' : 'bg-white text-brand-700 ring-1 ring-brand-200 hover:bg-brand-50'}`}
           >
-            ✏️ {editMode ? 'יציאה ממצב עריכה' : 'מצב עריכה'}
+            ✏️ {barMode === 'edit' ? 'יציאה ממצב עריכה' : 'מצב עריכה'}
           </button>
           <span className="text-xs text-slate-500">
-            {editMode ? 'סמנו שיעורים או "בחר יום שלם", ובחרו פעולה בסרגל התחתון' : 'לחיצה על שיעור פותחת עריכה • ➕ להוספת שיעור'}
+            {editMode ? 'סמנו שיעורים או "בחר יום שלם", ובחרו פעולה בסרגל התחתון' : 'לחיצה על שיעור פותחת עריכה • ➕ הוספה • − מחיקה'}
           </span>
+        </div>
+      )}
+
+      {/* חיווי: עריכה פרטנית לתלמיד */}
+      {props.canEditSchedule && student && (
+        <div role="note" className="mb-3 flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900">
+          <span aria-hidden>👤</span>
+          <span><b>שינוי פרטני עבור: {student.full_name}</b> — גלוי לתלמיד, להוריו ולמורים המקצועיים הרלוונטיים.
+            <span className="block text-xs text-violet-700">כל הוספה, עריכה או מחיקה כאן חלה רק עליו/ה; שאר הכיתה ממשיכה כרגיל.</span></span>
         </div>
       )}
 
@@ -114,10 +126,11 @@ export default function ScheduleBoard(props: BoardProps) {
       </div>
 
       {editMode && (
-        <BulkBar selected={pickedOccs} classId={props.classId}
+        <BulkBar key={barMode} mode={barMode === 'delete' ? 'delete' : 'edit'} selected={pickedOccs} classId={props.classId}
+          studentId={student?.id ?? null} studentName={student?.full_name ?? ''}
           onDone={(m) => { setPicked(new Set()); props.onChanged(); notify(m); }}
           onClear={() => setPicked(new Set())}
-          onExit={() => { setEditMode(false); setPicked(new Set()); }} />
+          onExit={() => { setBarMode('none'); setPicked(new Set()); }} />
       )}
 
       {toast && (
@@ -148,12 +161,25 @@ export default function ScheduleBoard(props: BoardProps) {
           teachers={props.teachers}
           date={editor.date}
           occurrence={editor.occurrence}
+          student={student}
           onClose={() => setEditor(null)}
           onSaved={afterSave}
         />
       )}
 
-      {/* כפתור + צף (פינה שמאלית תחתונה) — מחנך / מנהל */}
+      {/* כפתורים צפים (פינה שמאלית תחתונה) — מחנך / מנהל: − מחיקה מעל + הוספה */}
+      {props.canEditSchedule && !editMode && !editor && !selected && props.view !== 'month' && (
+        <button
+          type="button"
+          aria-label="מחיקת שיעורים"
+          title={student ? `מחיקת שיעורים — רק עבור ${student.full_name}` : 'מחיקת שיעורים'}
+          onClick={() => { setPicked(new Set()); setBarMode('delete'); }}
+          className="fixed left-5 z-40 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-4xl font-light text-red-600 shadow-lg ring-1 ring-red-200 transition hover:bg-red-50 active:scale-95"
+          style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
+        >
+          −
+        </button>
+      )}
       {props.canEditSchedule && !editMode && !editor && !selected && (
         <button
           type="button"
