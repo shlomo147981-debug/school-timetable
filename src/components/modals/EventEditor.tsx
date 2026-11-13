@@ -8,7 +8,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  addCalendarEvent, addLessons, commitChanges, dbSupportsExtras, endLesson, endLessons, fetchClassLessons, fetchStudentLessons,
+  addCalendarEvent, addLessons, commitChanges, dbSupportsExtras, endLesson, endLessons, fetchClassLessons,
+  fetchClassPersonalLessons, fetchClassStudents,
   updateLessonPermanent, updateLessonsPartial, type ChangeRow, type LessonFields, type Result,
 } from '@/lib/api';
 import { STUDENT_SQL_HINT, supportsStudentOverrides } from '@/lib/schema';
@@ -18,6 +19,7 @@ import type { EditScope, Lesson, LessonChangeKind, Occurrence, Person } from '@/
 import { EARLY_DISMISSAL_PREFIX, SPECIAL_NOTE, isSpecialNote, specialDetail } from '@/lib/types';
 import SpecialActivityPicker, { specialCalendarKind, specialTitle, type SpecialValue } from '../schedule/SpecialActivityPicker';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import AudiencePicker, { type Audience } from '../schedule/AudiencePicker';
 
 type Action = 'add' | 'edit' | 'cancel' | 'special';
 type CancelMode = 'lesson' | 'day' | 'early';
@@ -54,14 +56,16 @@ const overlaps = (l: Lesson, s: string, e: string) => hhmm(l.start_time) < e && 
 export interface EditorSaved { classId: string; date: string }
 
 export default function EventEditor({
-  classes, initialClassId, teachers, date, occurrence, student = null, onClose, onSaved,
+  classes, initialClassId, teachers, students = [], date, occurrence, student = null, onClose, onSaved,
 }: {
   classes: { id: string; name: string }[];
   initialClassId: string;
   teachers: Person[];
   date: string;
   occurrence?: Occurrence | null;
-  /** תלמיד מוצג — אז כל השינויים נשמרים רק עבורו */
+  /** תלמידי הכיתה הנוכחית (לבורר קהל היעד) */
+  students?: Person[];
+  /** תלמיד מוצג בתפריט העליון — מסומן מראש בבורר */
   student?: Person | null;
   onClose: () => void;
   onSaved: (msg: string, where: EditorSaved) => void;
@@ -93,36 +97,52 @@ export default function EventEditor({
   const [error, setError] = useState('');
   const [confirm, setConfirm] = useState<{ text: string; run: () => void } | null>(null);
 
-  // הקשר תלמיד: בתצוגת תלמיד — כל פעולה נשמרת רק עבורו (דריסה פרטנית / שיעור אישי)
-  const studentCtx = student && classId === initialClassId ? student : null;
+  // ---- קהל יעד: כל הכיתה / תלמידים נבחרים (בתצוגת תלמיד — הוא מסומן מראש)
+  const [audience, setAudience] = useState<Audience>(student ? 'students' : 'class');
+  const [picked, setPicked] = useState<string[]>(student ? [student.id] : []);
+  const [classStudents, setClassStudents] = useState<{ id: string; full_name: string }[]>(classId === initialClassId ? students : []);
+  useEffect(() => {
+    if (classId === initialClassId && students.length) { setClassStudents(students); return; }
+    let alive = true;
+    fetchClassStudents(classId).then((l) => { if (alive) setClassStudents(l); });
+    return () => { alive = false; };
+  }, [classId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nameOf = (id: string) => classStudents.find((x) => x.id === id)?.full_name ?? 'תלמיד/ה';
   const [overridesReady, setOverridesReady] = useState(true);
-  useEffect(() => { if (studentCtx) supportsStudentOverrides().then(setOverridesReady); }, [studentCtx?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (audience === 'students') supportsStudentOverrides().then(setOverridesReady); }, [audience]);
 
-  // טעינת שיעורי הכיתה (+ האישיים של התלמיד). השמירה נחסמת עד הטעינה.
+  // טעינת שיעורי הכיתה + כל השיעורים האישיים בכיתה. השמירה נחסמת עד הטעינה.
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
-  const loadKey = `${classId}|${studentCtx?.id ?? ''}`;
-  const loaded = loadedFor === loadKey;
+  const loaded = loadedFor === classId;
   useEffect(() => {
     let alive = true;
     setLoadedFor(null);
-    Promise.all([fetchClassLessons(classId), studentCtx ? fetchStudentLessons(classId, studentCtx.id) : Promise.resolve([])])
-      .then(([cls, mine]) => {
+    Promise.all([fetchClassLessons(classId), fetchClassPersonalLessons(classId)])
+      .then(([cls, personal]) => {
         if (!alive) return;
-        const all = [...cls, ...mine];
+        // איחוד לפי מזהה — הגנה מכפילויות
+        const all = [...new Map([...cls, ...personal].map((l) => [l.id, l])).values()];
         setLessons(all.length ? all : occ && occ.lesson.class_id === classId ? [occ.lesson] : []);
-        setLoadedFor(loadKey);
+        setLoadedFor(classId);
       })
       .catch(() => { if (alive) setError('טעינת שיעורי הכיתה נכשלה — בדקו את החיבור'); });
     return () => { alive = false; };
-  }, [loadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [classId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** שיעורים רלוונטיים: כיתתיים + האישיים של התלמיד המוצג */
-  const relevant = (l: Lesson) => !l.student_id || (!!studentCtx && l.student_id === studentCtx.id);
-  const dayLessons = useMemo(() => lessons.filter((l) => activeOn(l, startDate) && relevant(l))
-    .sort((a, b) => a.start_time.localeCompare(b.start_time)), [lessons, startDate, studentCtx?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const target = lessons.find((l) => l.id === targetId) ?? null;
-  /** שיעור כיתתי בתצוגת תלמיד → דריסה פרטנית (ולא שינוי של הכיתה) */
-  const overrideOf = (l: Lesson | null) => !!studentCtx && !!l && !l.student_id;
+  /** עריכת שיעור אישי/קבוצתי קיים: השינוי חל על השיעור עצמו (ולכל חברי הקבוצה) — בלי בורר קהל */
+  const personalTarget = !!target?.student_id && (action === 'edit' || (action === 'cancel' && cancelMode === 'lesson'));
+  const groupLessons: Lesson[] = personalTarget
+    ? (occ?.groupLessons?.some((g) => g.lesson.id === target!.id) ? occ.groupLessons.map((g) => g.lesson) : [target!])
+    : [];
+  const audienceIds: (string | null)[] = personalTarget || audience === 'class' ? [null] : picked;
+  const forStudents = audience === 'students' && !personalTarget;
+
+  /** שיעורים רלוונטיים לתלמיד (כיתתיים + האישיים שלו) / לכיתה (כיתתיים בלבד) */
+  const relevantFor = (sid: string | null) => (l: Lesson) => !l.student_id || (!!sid && l.student_id === sid);
+  const pickerSids = audience === 'students' ? picked : [];
+  const dayLessons = useMemo(() => lessons.filter((l) => activeOn(l, startDate) && (!l.student_id || pickerSids.includes(l.student_id) || l.id === targetId))
+    .sort((a, b) => a.start_time.localeCompare(b.start_time)), [lessons, startDate, pickerSids.join(), targetId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // בחירת שיעור → מילוי השדות מהמערכת הקבועה
   const pickTarget = (l: Lesson) => {
@@ -141,8 +161,8 @@ export default function EventEditor({
     : action === 'cancel' ? (cancelMode === 'lesson' ? (target?.specific_date ? ['once', 'year'] : ['once', 'week', 'allDays', 'year']) : ['once', 'week'])
     : ['once', 'week'];
   useEffect(() => { if (!allowed.includes(freq)) setFreq(allowed[0]); }, [allowed.join(), freq]); // eslint-disable-line react-hooks/exhaustive-deps
-  // "כל היום" בהוספה = אירוע לוח לכל הכיתה — לא זמין בתצוגת תלמיד
-  useEffect(() => { if (studentCtx && action === 'add' && allDay) setAllDay(false); }, [studentCtx, action, allDay]);
+  // "כל היום" בהוספה = אירוע לוח לכל הכיתה — לא זמין לתלמידים נבחרים
+  useEffect(() => { if (forStudents && action === 'add' && allDay) setAllDay(false); }, [forStudents, action, allDay]);
 
   const needsTarget = action === 'edit' || (action === 'cancel' && cancelMode === 'lesson');
   const showTime = action === 'add' ? !allDay : action === 'edit' ? true : action === 'special' ? !allDay : false;
@@ -153,11 +173,11 @@ export default function EventEditor({
 
   /** תאריכים שהפעולה חלה עליהם (חד-פעמי: טווח; השבוע: א'-ה' של שבוע תאריך ההתחלה) */
   const dates = () => (freq === 'week' ? weekDates(startDate) : schoolDaysBetween(startDate, showEndDate ? endDate : startDate));
-  /** אותה משבצת שעה בכל ימי השבוע (כיתתי, או האישיים של התלמיד אם השיעור אישי) */
+  /** אותה משבצת שעה בכל ימי השבוע (כיתתי, או של אותו תלמיד אם השיעור אישי) */
   const slotOf = (l: Lesson) => lessons.filter((x) => (x.student_id ?? null) === (l.student_id ?? null) && !x.specific_date && x.start_time === l.start_time);
-  /** כתיבת שינויים לפי ההקשר (כיתה / תלמיד) */
-  const commit = (items: { lesson: Lesson; row: ChangeRow; recurring?: boolean }[]) => commitChanges(studentCtx?.id ?? null, items);
-  const who = studentCtx ? ` עבור ${studentCtx.full_name}` : '';
+  const whoText = personalTarget
+    ? (groupLessons.length > 1 ? ` ל-${groupLessons.length} תלמידים` : ` עבור ${nameOf(target!.student_id!)}`)
+    : forStudents ? (picked.length === 1 ? ` עבור ${nameOf(picked[0])}` : ` עבור ${picked.length} תלמידים`) : '';
 
   const run = async (fn: () => Promise<Result>, msg: string) => {
     setPending(true); setError('');
@@ -171,6 +191,11 @@ export default function EventEditor({
       setPending(false);
     }
   };
+  /** מריץ את אותה פעולה לכל אחד מקהל היעד (null = כל הכיתה) */
+  const forEachAudience = (fn: (sid: string | null) => Promise<Result>) => async (): Promise<Result> => {
+    for (const sid of audienceIds) { const r = await fn(sid); if (!r.ok) return r; }
+    return { ok: true };
+  };
 
   const fieldsForAdd = (): LessonFields => ({
     subject: title, teacher_id: teacherId, co_teacher_id: null, teacher_label: teacherLabel,
@@ -181,25 +206,27 @@ export default function EventEditor({
   const save = () => {
     setError('');
     if (!loaded) { setError('רגע — שיעורי הכיתה עדיין נטענים'); return; }
+    if (forStudents && !picked.length) { setError('סמנו לפחות תלמיד אחד (או בחרו "כל הכיתה")'); return; }
     if (!schoolDow(startDate)) { setError('יש לבחור יום לימודים (א׳–ה׳)'); return; }
     if (showEndDate && endDate < startDate) { setError('תאריך הסיום לפני תאריך ההתחלה'); return; }
     if (showTime && endTime <= startTime) { setError('שעת הסיום חייבת להיות אחרי שעת ההתחלה'); return; }
     if (needsTarget && !target) { setError('בחרו שיעור מהרשימה'); return; }
 
-    // ---- הוספה (בתצוגת תלמיד: שיעור אישי שלו)
+    // ---- הוספה (תלמידים נבחרים: שיעור אישי לכל אחד מהם)
     if (action === 'add') {
       if (!title.trim()) { setError('יש להזין שם לשיעור / לפעילות'); return; }
       if (allDay) {
         return run(() => addCalendarEvent({ classId, kind: 'event', title: title.trim(), startDate, endDate: endDate < startDate ? startDate : endDate }),
           `נוסף אירוע: ${title.trim()}`);
       }
-      const f = { ...fieldsForAdd(), classId, studentId: studentCtx?.id ?? null };
-      const rows =
-        freq === 'once' ? dates().map((d) => ({ ...f, date: d, dayOfWeek: schoolDow(d)!, recurring: false }))
-        : freq === 'week' ? weekDates(startDate).map((d) => ({ ...f, date: d, dayOfWeek: schoolDow(d)!, recurring: false }))
-        : freq === 'allDays' ? weekDates(startDate).map((d) => ({ ...f, date: startDate, dayOfWeek: schoolDow(d)!, recurring: true }))
-        : [{ ...f, date: startDate, dayOfWeek: schoolDow(startDate)!, recurring: true }];
-      return run(() => addLessons(rows), `נוסף: ${title.trim()}${who}`);
+      const rows = audienceIds.flatMap((sid) => {
+        const f = { ...fieldsForAdd(), classId, studentId: sid };
+        return freq === 'once' ? dates().map((d) => ({ ...f, date: d, dayOfWeek: schoolDow(d)!, recurring: false }))
+          : freq === 'week' ? weekDates(startDate).map((d) => ({ ...f, date: d, dayOfWeek: schoolDow(d)!, recurring: false }))
+          : freq === 'allDays' ? weekDates(startDate).map((d) => ({ ...f, date: startDate, dayOfWeek: schoolDow(d)!, recurring: true }))
+          : [{ ...f, date: startDate, dayOfWeek: schoolDow(startDate)!, recurring: true }];
+      });
+      return run(() => addLessons(rows), `נוסף: ${title.trim()}${whoText}`);
     }
 
     // ---- שינוי שיעור
@@ -226,23 +253,31 @@ export default function EventEditor({
         new_color: changed.color ? color : null,
         note: note.trim() || null,
       });
-      const isOverride = overrideOf(t);
+      const bases = personalTarget ? groupLessons : [t];
+      const isOverride = forStudents && !t.student_id;
       if (freq === 'once' || freq === 'week' || isOverride) {
-        if (changed.teacher && teacherLabel && !teacherId) { setError('בשינוי לתאריך / לתלמיד יש לבחור מורה מהרשימה'); return; }
-        const items =
-          freq === 'once' ? [{ lesson: t, row: row(t.id, startDate) }]
-          : freq === 'week' ? weekDates(startDate).flatMap((d) => slotOf(t).filter((l) => activeOn(l, d)).map((l) => ({ lesson: l, row: row(l.id, d) })))
-          // תלמיד + קבוע: דריסה פרטנית שחוזרת כל שבוע עד סוף השנה
-          : freq === 'allDays' ? slotOf(t).map((l) => ({ lesson: l, row: row(l.id, startDate), recurring: true }))
-          : [{ lesson: t, row: row(t.id, startDate), recurring: true }];
+        if (changed.teacher && teacherLabel && !teacherId) { setError('בשינוי לתאריך / לתלמידים יש לבחור מורה מהרשימה'); return; }
+        const itemsFor = () => bases.flatMap((b) =>
+          freq === 'once' ? (activeOn(b, startDate) ? [{ lesson: b, row: row(b.id, startDate) }] : [])
+          : freq === 'week' ? weekDates(startDate).flatMap((d) => slotOf(b).filter((l) => activeOn(l, d)).map((l) => ({ lesson: l, row: row(l.id, d) })))
+          // תלמידים + קבוע: דריסה פרטנית שחוזרת כל שבוע עד סוף השנה
+          : freq === 'allDays' ? slotOf(b).map((l) => ({ lesson: l, row: row(l.id, startDate), recurring: true }))
+          : [{ lesson: b, row: row(b.id, startDate), recurring: true }]);
+        const items = itemsFor();
         if (!items.length) { setError('השיעור לא מתקיים בתאריך שנבחר'); return; }
-        return run(() => commit(items), (freq === 'week' ? 'השינוי נשמר לכל השבוע' : freq === 'once' ? 'השינוי נשמר' : 'השינוי נשמר עד סוף השנה') + who);
+        return run(forEachAudience((sid) => commitChanges(sid, items)),
+          (freq === 'week' ? 'השינוי נשמר לכל השבוע' : freq === 'once' ? 'השינוי נשמר' : 'השינוי נשמר עד סוף השנה') + whoText);
       }
       const full: LessonFields = {
         subject: title, teacher_id: teacherId, co_teacher_id: t.co_teacher_id, teacher_label: teacherLabel,
         start_time: startTime, end_time: endTime, room, color, note,
       };
-      if (freq === 'year') return run(() => updateLessonPermanent(t.id, full), 'המערכת הקבועה עודכנה' + who);
+      if (freq === 'year') {
+        return run(async () => {
+          for (const b of bases) { const r = await updateLessonPermanent(b.id, { ...full, co_teacher_id: b.co_teacher_id }); if (!r.ok) return r; }
+          return { ok: true };
+        }, 'המערכת הקבועה עודכנה' + whoText);
+      }
       const patch: Partial<LessonFields> = {};
       if (changed.subject) patch.subject = title.trim();
       if (changed.teacher) { patch.teacher_id = teacherId; patch.teacher_label = teacherLabel; }
@@ -251,7 +286,8 @@ export default function EventEditor({
       if (changed.color) patch.color = color;
       if ((note.trim() || null) !== (t.note || null)) patch.note = note.trim() || null;
       if (!Object.keys(patch).length) { setError('לא בוצע שינוי'); return; }
-      return run(() => updateLessonsPartial(slotOf(t).map((l) => l.id), patch), `עודכנה המשבצת ${hhmm(t.start_time)} בכל ימי השבוע${who}`);
+      return run(() => updateLessonsPartial([...new Set(bases.flatMap((b) => slotOf(b).map((l) => l.id)))], patch),
+        `עודכנה המשבצת ${hhmm(t.start_time)} בכל ימי השבוע${whoText}`);
     }
 
     // ---- ביטול / שחרור מוקדם
@@ -259,66 +295,80 @@ export default function EventEditor({
       const reason = note.trim() || null;
       const cancelRow = (l: Lesson, d: string, n: string | null = reason): ChangeRow => ({ lesson_id: l.id, change_date: d, kind: 'cancelled', note: n });
       if (cancelMode === 'lesson' && target) {
-        const isOverride = overrideOf(target);
+        const bases = personalTarget ? groupLessons : [target];
+        const isOverride = forStudents && !target.student_id;
         if (freq === 'year' || freq === 'allDays') {
-          const list = freq === 'year' ? [target] : slotOf(target);
+          const list = [...new Set(bases.flatMap((b) => (freq === 'year' ? [b] : slotOf(b))))];
+          const subj = freq === 'year' ? `"${target.subject}"` : `כל שיעורי המשבצת ${hhmm(target.start_time)}`;
           const text = isOverride
-            ? `לבטל את ${freq === 'year' ? `"${target.subject}"` : `כל שיעורי המשבצת ${hhmm(target.start_time)}`} עבור ${studentCtx!.full_name} בלבד, בכל שבוע עד סוף השנה? שאר הכיתה ממשיכה כרגיל.`
-            : freq === 'year' ? `להסיר את "${target.subject}" מהמערכת הקבועה החל מ-${heDate(startDate, { day: 'numeric', month: 'numeric' })}?`
-            : `להסיר את כל שיעורי המשבצת ${hhmm(target.start_time)} מכל ימי השבוע (מהתאריך הזה והלאה)?`;
+            ? `לבטל את ${subj}${whoText} בלבד, בכל שבוע עד סוף השנה? שאר הכיתה ממשיכה כרגיל.`
+            : `להסיר את ${subj}${whoText} מהמערכת הקבועה החל מ-${heDate(startDate, { day: 'numeric', month: 'numeric' })}?`;
           setConfirm({ text, run: () => run(
-            () => (isOverride
-              ? commit(list.map((l) => ({ lesson: l, row: cancelRow(l, startDate), recurring: true })))
-              : freq === 'year' ? endLesson(target.id, startDate, !!target.specific_date) : endLessons(list.map((l) => l.id), startDate)),
-            (isOverride ? `בוטל${who} עד סוף השנה` : 'הוסר מהמערכת')) });
+            isOverride
+              ? forEachAudience((sid) => commitChanges(sid, list.map((l) => ({ lesson: l, row: cancelRow(l, startDate), recurring: true }))))
+              : async () => {
+                const oneTime = list.filter((l) => l.specific_date);
+                for (const l of oneTime) { const r = await endLesson(l.id, startDate, true); if (!r.ok) return r; }
+                const rest = list.filter((l) => !l.specific_date);
+                return rest.length ? endLessons(rest.map((l) => l.id), startDate) : { ok: true };
+              },
+            (isOverride ? `בוטל${whoText} עד סוף השנה` : `הוסר מהמערכת${whoText}`)) });
           return;
         }
-        const items = freq === 'once' ? [{ lesson: target, row: cancelRow(target, startDate) }]
-          : weekDates(startDate).flatMap((d) => slotOf(target).filter((l) => activeOn(l, d)).map((l) => ({ lesson: l, row: cancelRow(l, d) })));
-        return run(() => commit(items), (freq === 'week' ? 'השיעור בוטל לכל השבוע' : 'השיעור בוטל') + who);
+        const items = bases.flatMap((b) => (freq === 'once' ? [{ lesson: b, row: cancelRow(b, startDate) }]
+          : weekDates(startDate).flatMap((d) => slotOf(b).filter((l) => activeOn(l, d)).map((l) => ({ lesson: l, row: cancelRow(l, d) })))));
+        return run(forEachAudience((sid) => commitChanges(sid, items)), (freq === 'week' ? 'השיעור בוטל לכל השבוע' : 'השיעור בוטל') + whoText);
       }
       const ds = dates();
       if (cancelMode === 'day') {
-        const items = ds.flatMap((d) => lessons.filter((l) => relevant(l) && activeOn(l, d)).map((l) => ({ lesson: l, row: cancelRow(l, d) })));
-        if (!items.length) { setError('אין שיעורים לבטל בתאריכים שנבחרו'); return; }
-        return run(() => commit(items), `בוטלו ${items.length} שיעורים${who}`);
+        const itemsFor = (sid: string | null) => ds.flatMap((d) => lessons.filter((l) => relevantFor(sid)(l) && activeOn(l, d)).map((l) => ({ lesson: l, row: cancelRow(l, d) })));
+        if (!audienceIds.some((sid) => itemsFor(sid).length)) { setError('אין שיעורים לבטל בתאריכים שנבחרו'); return; }
+        return run(forEachAudience((sid) => { const it = itemsFor(sid); return it.length ? commitChanges(sid, it) : Promise.resolve({ ok: true } as Result); }),
+          `השיעורים בוטלו${whoText}`);
       }
       // שחרור מוקדם: ביטול כל השיעורים מהשעה שנבחרה + הודעה (לכל הכיתה — גם אירוע בלוח)
       const msg = `${EARLY_DISMISSAL_PREFIX} ${earlyTime}`;
       return run(async () => {
-        const items = ds.flatMap((d) => lessons.filter((l) => relevant(l) && activeOn(l, d) && hhmm(l.start_time) >= earlyTime)
-          .map((l) => ({ lesson: l, row: cancelRow(l, d, reason ?? msg) })));
-        if (items.length) { const r = await commit(items); if (!r.ok) return r; }
-        if (!studentCtx) for (const d of ds) {
+        const r = await forEachAudience((sid) => {
+          const items = ds.flatMap((d) => lessons.filter((l) => relevantFor(sid)(l) && activeOn(l, d) && hhmm(l.start_time) >= earlyTime)
+            .map((l) => ({ lesson: l, row: cancelRow(l, d, reason ?? msg) })));
+          return items.length ? commitChanges(sid, items) : Promise.resolve({ ok: true } as Result);
+        })();
+        if (!r.ok) return r;
+        if (!forStudents) for (const d of ds) {
           const e = await addCalendarEvent({ classId, kind: 'event', title: reason ? `${msg} — ${reason}` : msg, startDate: d, endDate: d });
           if (!e.ok) return e;
         }
         return { ok: true };
-      }, msg + who);
+      }, msg + whoText);
     }
 
     // ---- פעילות מיוחדת: מחליפה את השיעורים בטווח השעות (או כל היום)
     const st = specialTitle(special);
     if (!st) { setError('כתבו מהי הפעילות או הסיבה'); return; }
     const marker = note.trim() ? `${SPECIAL_NOTE}: ${note.trim()}` : SPECIAL_NOTE;
-    const calKind = studentCtx ? null : specialCalendarKind(special) ?? (allDay ? 'event' : null);
+    const calKind = forStudents ? null : specialCalendarKind(special) ?? (allDay ? 'event' : null);
     return run(async () => {
       const ds = dates();
-      const items: { lesson: Lesson; row: ChangeRow }[] = [];
-      const newOnes: Parameters<typeof addLessons>[0] = [];
-      for (const d of ds) {
-        const hit = lessons.filter((l) => relevant(l) && activeOn(l, d) && (allDay || overlaps(l, startTime, endTime)));
-        if (hit.length) hit.forEach((l) => items.push({ lesson: l, row: { lesson_id: l.id, change_date: d, kind: 'modified', new_subject: st, new_color: color, note: marker } }));
-        else if (!allDay) newOnes.push({ subject: st, teacher_id: null, co_teacher_id: null, teacher_label: null, start_time: startTime, end_time: endTime, room: null, color, note: note.trim() || null, classId, studentId: studentCtx?.id ?? null, date: d, dayOfWeek: schoolDow(d)!, recurring: false });
-      }
-      if (items.length) { const r = await commit(items); if (!r.ok) return r; }
-      if (newOnes.length) { const r = await addLessons(newOnes); if (!r.ok) return r; }
+      const r = await forEachAudience(async (sid) => {
+        const items: { lesson: Lesson; row: ChangeRow }[] = [];
+        const newOnes: Parameters<typeof addLessons>[0] = [];
+        for (const d of ds) {
+          const hit = lessons.filter((l) => relevantFor(sid)(l) && activeOn(l, d) && (allDay || overlaps(l, startTime, endTime)));
+          if (hit.length) hit.forEach((l) => items.push({ lesson: l, row: { lesson_id: l.id, change_date: d, kind: 'modified', new_subject: st, new_color: color, note: marker } }));
+          else if (!allDay) newOnes.push({ subject: st, teacher_id: null, co_teacher_id: null, teacher_label: null, start_time: startTime, end_time: endTime, room: null, color, note: note.trim() || null, classId, studentId: sid, date: d, dayOfWeek: schoolDow(d)!, recurring: false });
+        }
+        if (items.length) { const a = await commitChanges(sid, items); if (!a.ok) return a; }
+        if (newOnes.length) { const a = await addLessons(newOnes); if (!a.ok) return a; }
+        return { ok: true };
+      })();
+      if (!r.ok) return r;
       if (calKind) for (const d of ds) {
         const e = await addCalendarEvent({ classId, kind: calKind, title: st, startDate: d, endDate: d });
         if (!e.ok) return e;
       }
       return { ok: true };
-    }, `הוחלף בפעילות: ${st}${who}`);
+    }, `הוחלף בפעילות: ${st}${whoText}`);
   };
 
   const selectedClassName = classes.find((c) => c.id === classId)?.name ?? '';
@@ -337,7 +387,7 @@ export default function EventEditor({
         <header className="safe-top flex items-center gap-2 border-b border-slate-200 bg-white px-2 py-2">
           <button type="button" aria-label="סגירה" onClick={() => ref.current?.close()}
             className="flex h-10 w-10 items-center justify-center rounded-full text-xl text-slate-600 hover:bg-slate-100">✕</button>
-          <h2 className="flex-1 truncate text-lg font-semibold">{occ ? 'עריכת שיעור' : 'פעולה חדשה'} · {studentCtx ? studentCtx.full_name : selectedClassName}</h2>
+          <h2 className="flex-1 truncate text-lg font-semibold">{occ ? 'עריכת שיעור' : 'פעולה חדשה'} · {forStudents ? (picked.length === 1 ? nameOf(picked[0]) : `${picked.length} תלמידים`) : selectedClassName}</h2>
           <button type="button" onClick={save} disabled={pending || !loaded}
             className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-brand-700 disabled:opacity-50">
             {pending ? 'שומר…' : !loaded ? 'טוען…' : 'שמירה'}
@@ -345,10 +395,12 @@ export default function EventEditor({
         </header>
 
         <div className="flex-1 overflow-y-auto">
-          {studentCtx && (
+          {(forStudents || personalTarget) && (
             <div role="note" className="border-b border-violet-200 bg-violet-50 px-4 py-2 text-sm text-violet-900">
-              👤 <b>שינוי פרטני עבור: {studentCtx.full_name}</b> — גלוי לתלמיד, להוריו ולמורים המקצועיים הרלוונטיים.
-              {!overridesReady && <span className="mt-1 block text-xs text-amber-800">{STUDENT_SQL_HINT} (הוספת שיעור אישי עובדת כבר עכשיו.)</span>}
+              👤 <b>{personalTarget ? (groupLessons.length > 1 ? `שיעור קבוצתי: ${groupLessons.length} תלמידים` : `שיעור אישי של ${nameOf(target!.student_id!)}`)
+                : `שינוי ${picked.length > 1 ? 'קבוצתי' : 'פרטני'} עבור: ${picked.length ? picked.map(nameOf).join(', ') : '— טרם נבחרו תלמידים —'}`}</b>
+              {' '}— גלוי {picked.length > 1 || groupLessons.length > 1 ? 'לתלמידים שנבחרו, להוריהם' : 'לתלמיד, להוריו'} ולמורים המקצועיים הרלוונטיים. שאר הכיתה ממשיכה כרגיל.
+              {forStudents && !overridesReady && <span className="mt-1 block text-xs text-amber-800">{STUDENT_SQL_HINT} (הוספת שיעור אישי עובדת כבר עכשיו.)</span>}
             </div>
           )}
           {/* סוג הפעולה */}
@@ -373,6 +425,18 @@ export default function EventEditor({
               </select>
             </div>
           </div>
+
+          {/* קהל יעד */}
+          {!personalTarget && !(action === 'add' && allDay) && (
+            <div className={row}>
+              <span className={icon} aria-hidden>🎯</span>
+              <div className="flex-1">
+                <span className="label">על מי חל השינוי?</span>
+                <AudiencePicker audience={audience} onAudience={(a) => { setAudience(a); setError(''); }}
+                  students={classStudents} selected={picked} onSelected={(ids) => { setPicked(ids); setError(''); }} />
+              </div>
+            </div>
+          )}
 
           {/* ביטול: סוג */}
           {action === 'cancel' && (
@@ -402,7 +466,7 @@ export default function EventEditor({
           <div className={row}>
             <span className={icon} aria-hidden>🕒</span>
             <div className="flex-1 space-y-3">
-              {(action === 'special' || (action === 'add' && !studentCtx)) && (
+              {(action === 'special' || (action === 'add' && !forStudents)) && (
                 <label className="flex cursor-pointer items-center justify-between">
                   <span className="font-medium">כל היום</span>
                   <span className="relative inline-flex">
@@ -463,7 +527,7 @@ export default function EventEditor({
                     {dayLessons.map((l) => (
                       <button key={l.id} type="button" onClick={() => pickTarget(l)}
                         className={`rounded-lg border px-2 py-1 text-sm ${targetId === l.id ? 'border-brand-500 bg-brand-50 font-medium' : 'border-slate-200'}`}>
-                        <span dir="ltr" className="text-xs text-slate-500">{hhmm(l.start_time)}</span> {l.student_id ? '👤 ' : ''}{l.subject}
+                        <span dir="ltr" className="text-xs text-slate-500">{hhmm(l.start_time)}</span> {l.subject}{l.student_id ? <span className="text-xs text-violet-700"> · 👤 {nameOf(l.student_id)}</span> : ''}
                       </button>
                     ))}
                   </div>

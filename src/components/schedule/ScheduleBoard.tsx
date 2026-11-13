@@ -127,7 +127,7 @@ export default function ScheduleBoard(props: BoardProps) {
 
       {editMode && (
         <BulkBar key={barMode} mode={barMode === 'delete' ? 'delete' : 'edit'} selected={pickedOccs} classId={props.classId}
-          studentId={student?.id ?? null} studentName={student?.full_name ?? ''}
+          studentId={student?.id ?? null} studentName={student?.full_name ?? ''} students={props.students}
           onDone={(m) => { setPicked(new Set()); props.onChanged(); notify(m); }}
           onClear={() => setPicked(new Set())}
           onExit={() => { setBarMode('none'); setPicked(new Set()); }} />
@@ -161,6 +161,7 @@ export default function ScheduleBoard(props: BoardProps) {
           teachers={props.teachers}
           date={editor.date}
           occurrence={editor.occurrence}
+          students={props.students}
           student={student}
           onClose={() => setEditor(null)}
           onSaved={afterSave}

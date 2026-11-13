@@ -6,7 +6,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { resolveContext, type ViewContext } from '@/lib/context';
 import { isValidISO, rangeFor, rangeTitle, toSchoolDay, todayISO } from '@/lib/dates';
 import { loadSchedule } from '@/lib/loadSchedule';
-import { buildOccurrences } from '@/lib/schedule';
+import { buildOccurrences, groupPersonal } from '@/lib/schedule';
 import type { Assignment, CalendarEvent, Occurrence, Profile, StudentEvent, View } from '@/lib/types';
 import ScheduleToolbar from '../schedule/ScheduleToolbar';
 import ScheduleBoard from '../schedule/ScheduleBoard';
@@ -45,7 +45,9 @@ export default function ScheduleScreen({ profile }: { profile: Profile }) {
         if (ctx.classId) {
           const { from, to } = rangeFor(view, date);
           const d = await loadSchedule(supabase, { classId: ctx.classId, studentId: ctx.studentId, scope: ctx.scope, from, to });
-          loaded = { ctx, occurrences: buildOccurrences({ from, to, ...d, studentId: ctx.scope === 'personal' ? ctx.studentId : null }), calendar: d.calendar, assignments: d.assignments, events: d.events };
+          const built = buildOccurrences({ from, to, ...d, studentId: ctx.scope === 'personal' ? ctx.studentId : null });
+          const nameOf = (id: string) => ctx.students.find((s) => s.id === id)?.full_name ?? 'תלמיד/ה';
+          loaded = { ctx, occurrences: ctx.studentId ? built : groupPersonal(built, nameOf), calendar: d.calendar, assignments: d.assignments, events: d.events };
         }
         if (!cancelled) setData(loaded);
       } catch {

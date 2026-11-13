@@ -63,6 +63,12 @@ export default function TeacherQuickModal({
       subtitle={`${heDate(occ.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${hhmm(occ.start)}–${hhmm(occ.end)}${occ.room ? ` · חדר ${occ.room}` : ''}`}
       onClose={onClose}
     >
+      {occ.groupLessons && occ.groupLessons.length > 0 && (
+        <div className="mb-3 rounded-lg border border-violet-200 bg-violet-50 p-2 text-sm text-violet-900">
+          <span className="font-medium">{occ.groupLessons.length > 1 ? `👥 שיעור קבוצתי (${occ.groupLessons.length}):` : '👤 שיעור אישי:'}</span>{' '}
+          {occ.groupLessons.map((g) => g.name).join(', ')}
+        </div>
+      )}
       {occ.studentOverrides.length > 0 && (
         <div className="mb-3 rounded-lg border border-violet-200 bg-violet-50 p-2 text-sm text-violet-900">
           <div className="mb-1 font-medium">👤 שינויים פרטניים בשיעור הזה</div>

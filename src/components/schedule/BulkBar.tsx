@@ -6,10 +6,11 @@ import {
   type ChangeRow, type Result,
 } from '@/lib/api';
 import { addMinutes, heDate, hhmm, schoolDow, weekDates } from '@/lib/dates';
-import type { Lesson, Occurrence, StudentChange } from '@/lib/types';
+import type { Lesson, Occurrence, Person, StudentChange } from '@/lib/types';
 import { SPECIAL_NOTE } from '@/lib/types';
 import SpecialActivityPicker, { specialCalendarKind, specialTitle, type SpecialValue } from './SpecialActivityPicker';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import AudiencePicker, { type Audience } from './AudiencePicker';
 
 type DeleteFreq = 'once' | 'week' | 'year';
 const DELETE_FREQS: { id: DeleteFreq; label: string }[] = [
@@ -28,9 +29,11 @@ const activeOn = (l: Lesson, d: string) =>
  * בתצוגת תלמיד (studentId) — כל פעולה על שיעור כיתתי נשמרת כדריסה פרטנית לתלמיד בלבד.
  */
 export default function BulkBar({
-  mode: barMode, selected, classId, studentId, studentName, onDone, onClear, onExit,
+  mode: barMode, selected, classId, studentId, studentName, students = [], onDone, onClear, onExit,
 }: {
   mode: 'edit' | 'delete'; selected: Occurrence[]; classId: string; studentId: string | null; studentName: string;
+  /** תלמידי הכיתה — לבחירת קהל יעד במצב מחיקה */
+  students?: Person[];
   onDone: (msg: string) => void; onClear: () => void; onExit: () => void;
 }) {
   const [mode, setMode] = useState<'none' | 'shift' | 'special'>('none');
@@ -42,6 +45,15 @@ export default function BulkBar({
   const [error, setError] = useState('');
   const n = selected.length;
   const forStudent = !!studentId;
+  // קהל יעד למחיקה: כל הכיתה / תלמידים נבחרים (התלמיד מהתפריט העליון מסומן מראש)
+  const [audience, setAudience] = useState<Audience>(studentId ? 'students' : 'class');
+  const [picked, setPicked] = useState<string[]>(studentId ? [studentId] : []);
+  const [showAudience, setShowAudience] = useState(false);
+  const delForStudents = audience === 'students';
+  const nameOf = (id: string) => students.find((x) => x.id === id)?.full_name ?? (id === studentId ? studentName : 'תלמיד/ה');
+  const delWho = delForStudents ? (picked.length === 1 ? nameOf(picked[0]) : `${picked.length} תלמידים`) : '';
+  /** כרטיס קבוצתי (שיעור אישי לכמה תלמידים) → כל השיעורים שבו */
+  const expand = (o: Occurrence): Occurrence[] => (o.groupLessons?.length ? o.groupLessons.map((g) => ({ ...o, lesson: g.lesson })) : [o]);
 
   // שומר על שינויים קיימים (מחליף/מקצוע) ומוסיף עליהם
   const base = (o: Occurrence): ChangeRow => ({
@@ -56,8 +68,9 @@ export default function BulkBar({
     new_color: o.change?.new_color ?? null,
     note: o.change?.note ?? null,
   });
-  const commit = (rows: { o: Pick<Occurrence, 'lesson'>; row: ChangeRow; recurring?: boolean }[]) =>
-    commitChanges(studentId, rows.map((r) => ({ lesson: r.o.lesson, row: r.row, recurring: r.recurring })));
+  const commit = (rows: { o: Pick<Occurrence, 'lesson' | 'groupLessons'>; row: ChangeRow; recurring?: boolean }[]) =>
+    commitChanges(studentId, rows.flatMap((r) => (r.o.groupLessons?.length ? r.o.groupLessons.map((g) => g.lesson) : [r.o.lesson])
+      .map((lesson) => ({ lesson, row: { ...r.row, lesson_id: lesson.id }, recurring: r.recurring }))));
 
   const run = async (fn: () => Promise<Result>, msg: string) => {
     setPending(true); setError('');
@@ -101,44 +114,58 @@ export default function BulkBar({
     }, `הוחלף בפעילות: ${title}`);
   };
 
-  // ---------------- מצב מחיקה (−)
-  const doDelete = () => run(async () => {
+  // ---------------- מצב מחיקה (−): לכל הכיתה, או לכל תלמיד שסומן בנפרד
+  const deleteFor = async (sid: string | null): Promise<Result> => {
+    const forS = !!sid;
+    // שיעור אישי של תלמיד אחר — לא נוגעים בו כשמוחקים לתלמידים נבחרים
+    const occs = selected.flatMap(expand).filter((o) => !forS || !o.lesson.student_id || o.lesson.student_id === sid);
     const items: { o: Pick<Occurrence, 'lesson'>; row: ChangeRow; recurring?: boolean }[] = [];
     const cancelRow = (lesson: Lesson, d: string): ChangeRow => ({ lesson_id: lesson.id, change_date: d, kind: 'cancelled' });
 
     if (delFreq === 'once') {
-      selected.forEach((o) => items.push({ o, row: cancelRow(o.lesson, o.date) }));
+      occs.forEach((o) => items.push({ o, row: cancelRow(o.lesson, o.date) }));
     } else if (delFreq === 'week') {
       // אותה משבצת שעה בכל ימי השבוע הנוכחי
       const seen = new Set<string>();
-      for (const o of selected) {
+      for (const o of occs) {
+        if (o.lesson.specific_date) { items.push({ o, row: cancelRow(o.lesson, o.date) }); continue; }
         const slot = await fetchSlotLessons(classId, o.lesson.start_time, o.lesson.student_id);
-        const lessons = slot.length ? slot : [o.lesson];
-        for (const d of weekDates(o.date)) for (const l of lessons) {
+        for (const d of weekDates(o.date)) for (const l of (slot.length ? slot : [o.lesson])) {
           if (!activeOn(l, d) || seen.has(`${l.id}|${d}`)) continue;
           seen.add(`${l.id}|${d}`);
           items.push({ o: { lesson: l }, row: cancelRow(l, d) });
         }
       }
-      // שיעורים חד-פעמיים שסומנו — רק בתאריך שלהם
-      selected.filter((o) => o.lesson.specific_date).forEach((o) => items.push({ o, row: cancelRow(o.lesson, o.date) }));
     } else {
-      // קבוע: כיתתי → הסרה מהמערכת מהתאריך; תלמיד → דריסה פרטנית חוזרת עד סוף השנה
-      const permanentClass = selected.filter((o) => !forStudent || o.lesson.student_id);
-      for (const o of permanentClass) {
+      // קבוע: כיתתי/אישי → הסרה מהמערכת מהתאריך; תלמיד + שיעור כיתתי → דריסה פרטנית חוזרת עד סוף השנה
+      for (const o of occs.filter((x) => !forS || x.lesson.student_id)) {
         const r = o.lesson.specific_date ? await endLesson(o.lesson.id, o.date, true) : await endLessons([o.lesson.id], o.date);
         if (!r.ok) return r;
       }
-      selected.filter((o) => forStudent && !o.lesson.student_id)
-        .forEach((o) => items.push({ o, row: cancelRow(o.lesson, o.date), recurring: true }));
-      if (!items.length) return { ok: true };
+      occs.filter((x) => forS && !x.lesson.student_id).forEach((o) => items.push({ o, row: cancelRow(o.lesson, o.date), recurring: true }));
     }
-    return commit(items);
-  }, delFreq === 'year' ? `${n} שיעורים הוסרו${forStudent ? ` ל${studentName}` : ''} עד סוף השנה` : `${n} שיעורים בוטלו${forStudent ? ` ל${studentName}` : ''}`);
+    if (!items.length) return { ok: true };
+    return commitChanges(sid, items.map((r) => ({ lesson: r.o.lesson, row: r.row, recurring: r.recurring })));
+  };
+  const doDelete = () => {
+    if (delForStudents && !picked.length) { setError('סמנו לפחות תלמיד אחד (או בחרו "כל הכיתה")'); setShowAudience(true); return; }
+    const sids: (string | null)[] = delForStudents ? picked : [null];
+    return run(async () => {
+      for (const sid of sids) { const r = await deleteFor(sid); if (!r.ok) return r; }
+      return { ok: true };
+    }, `${n} שיעורים ${delFreq === 'year' ? 'הוסרו עד סוף השנה' : 'בוטלו'}${delForStudents ? ` עבור ${delWho}` : ''}`);
+  };
 
-  const scopeNote = forStudent
-    ? <span className="rounded bg-violet-100 px-2 py-0.5 text-xs text-violet-900">👤 רק עבור {studentName}</span>
-    : <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">לכל הכיתה</span>;
+  const scopeNote = barMode === 'delete'
+    ? (
+      <button type="button" onClick={() => setShowAudience(!showAudience)} aria-expanded={showAudience}
+        className={`rounded px-2 py-0.5 text-xs ${delForStudents ? 'bg-violet-100 text-violet-900' : 'bg-slate-100 text-slate-700'}`}>
+        {delForStudents ? `👤 רק עבור ${picked.length ? delWho : '—'}` : '👥 לכל הכיתה'} ▾
+      </button>
+    )
+    : forStudent
+      ? <span className="rounded bg-violet-100 px-2 py-0.5 text-xs text-violet-900">👤 רק עבור {studentName}</span>
+      : <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">לכל הכיתה</span>;
 
   return (
     <div className={`safe-bottom fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur ${barMode === 'delete' ? 'border-red-200' : 'border-slate-200'}`}>
@@ -172,6 +199,10 @@ export default function BulkBar({
             <button className="btn-primary" onClick={onExit}>סיום</button>
           </div>
         </div>
+        {barMode === 'delete' && showAudience && (
+          <AudiencePicker compact audience={audience} onAudience={(a) => { setAudience(a); setError(''); }}
+            students={students} selected={picked} onSelected={(ids) => { setPicked(ids); setError(''); }} />
+        )}
         {barMode === 'edit' && mode === 'shift' && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span>הזזה ב-</span>
@@ -194,8 +225,8 @@ export default function BulkBar({
       {confirm && (
         <ConfirmDialog
           title="מחיקה קבועה"
-          message={forStudent
-            ? `${n} השיעורים המסומנים יבוטלו עבור ${studentName} בלבד, בכל שבוע עד סוף השנה. שאר הכיתה ממשיכה כרגיל.`
+          message={delForStudents
+            ? `${n} השיעורים המסומנים יבוטלו עבור ${delWho} בלבד, בכל שבוע עד סוף השנה. שאר הכיתה ממשיכה כרגיל.`
             : `${n} השיעורים המסומנים יוסרו ממערכת הכיתה החל מ-${heDate(selected[0]?.date ?? '', { day: 'numeric', month: 'numeric' })} ועד סוף השנה.`}
           confirmLabel="מחיקה קבועה" danger pending={pending}
           onCancel={() => setConfirm(false)} onConfirm={() => { setConfirm(false); doDelete(); }} />

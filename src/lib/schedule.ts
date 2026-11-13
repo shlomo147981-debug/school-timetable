@@ -7,6 +7,24 @@ export function lessonTeacherName(l: Lesson) {
   return [l.teacher?.full_name, l.co_teacher?.full_name].filter(Boolean).join(' / ');
 }
 
+/**
+ * תצוגה כיתתית לצוות: שיעורים אישיים זהים (אותו תאריך, שעות, מקצוע ומורה) לכמה תלמידים
+ * מקובצים לכרטיס אחד עם רשימת התלמידים.
+ */
+export function groupPersonal(occs: Occurrence[], nameOf: (id: string) => string): Occurrence[] {
+  const out: Occurrence[] = [];
+  const groups = new Map<string, Occurrence>();
+  for (const o of occs) {
+    if (!o.personal || !o.lesson.student_id) { out.push(o); continue; }
+    const key = [o.date, o.start, o.end, o.subject, o.teacherId ?? '', o.status].join('|');
+    const g = groups.get(key);
+    const entry = { lesson: o.lesson, name: nameOf(o.lesson.student_id) };
+    if (g) g.groupLessons!.push(entry);
+    else { const first = { ...o, groupLessons: [entry] }; groups.set(key, first); out.push(first); }
+  }
+  return out;
+}
+
 export function holidayOn(date: string, events: CalendarEvent[]) {
   return events.find((e) => e.kind === 'holiday' && e.start_date <= date && e.end_date >= date) ?? null;
 }

@@ -13,10 +13,11 @@ export async function loadSchedule(
     .from('lessons')
     .select('*, teacher:profiles!lessons_teacher_id_fkey(full_name), co_teacher:profiles!lessons_co_teacher_id_fkey(full_name)')
     .eq('class_id', classId);
-  lessonsQ =
-    studentId && scope === 'personal'
-      ? lessonsQ.or(`student_id.is.null,student_id.eq.${studentId}`)
-      : lessonsQ.is('student_id', null);
+  // תלמיד/הורה: כיתתי (+ האישיים של התלמיד). צוות בתצוגה כיתתית: הכל — RLS מסנן לפי הרשאה,
+  // והשיעורים האישיים/הקבוצתיים מקובצים לכרטיס אחד ("👥 N תלמידים").
+  if (studentId) {
+    lessonsQ = scope === 'personal' ? lessonsQ.or(`student_id.is.null,student_id.eq.${studentId}`) : lessonsQ.is('student_id', null);
+  }
 
   const [lessonsRes, calRes, asgRes, evRes] = await Promise.all([
     lessonsQ,

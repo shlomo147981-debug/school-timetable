@@ -56,7 +56,11 @@ export default function LessonCard({
       </div>
 
       <div className="mt-1.5 flex flex-wrap gap-1">
-        {occ.personal && <span className="rounded bg-violet-200 px-1.5 py-0.5 text-[11px] text-violet-900">👤 אישי</span>}
+        {occ.personal && (occ.groupLessons?.length
+          ? <span className="rounded bg-violet-200 px-1.5 py-0.5 text-[11px] text-violet-900" title={occ.groupLessons.map((g) => g.name).join(', ')}>
+              {occ.groupLessons.length > 1 ? `👥 ${occ.groupLessons.length} תלמידים` : `👤 ${occ.groupLessons[0].name}`}
+            </span>
+          : <span className="rounded bg-violet-200 px-1.5 py-0.5 text-[11px] text-violet-900">👤 אישי</span>)}
         {occ.personalOverride && <span className="rounded bg-violet-600 px-1.5 py-0.5 text-[11px] text-white">👤 שינוי אישי</span>}
         {occ.studentOverrides.length > 0 && (
           <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[11px] text-violet-900" title="תלמידים עם שינוי פרטני בשיעור הזה">

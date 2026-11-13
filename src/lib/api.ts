@@ -498,3 +498,23 @@ export async function commitChanges(
   if (!classRows.length && !studentRows.length) return fail('לא נבחרו שיעורים');
   return ok();
 }
+
+// =====================================================================
+// גרסה 1.5.0 — קהל יעד: כל הכיתה / תלמידים נבחרים
+// =====================================================================
+
+/** תלמידי כיתה (לבורר קהל היעד) */
+export async function fetchClassStudents(classId: string): Promise<{ id: string; full_name: string }[]> {
+  const { data } = await getSupabase().from('profiles').select('id, full_name')
+    .eq('role', 'student').eq('class_id', classId).order('full_name');
+  return data ?? [];
+}
+
+/** כל השיעורים האישיים בכיתה (מחנך/מנהל רואים את כולם) */
+export async function fetchClassPersonalLessons(classId: string): Promise<Lesson[]> {
+  const { data } = await getSupabase()
+    .from('lessons')
+    .select('*, teacher:profiles!lessons_teacher_id_fkey(full_name), co_teacher:profiles!lessons_co_teacher_id_fkey(full_name)')
+    .eq('class_id', classId).not('student_id', 'is', null).order('start_time');
+  return (data ?? []) as Lesson[];
+}

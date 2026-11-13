@@ -126,6 +126,8 @@ export interface Occurrence {
   personalOverride: boolean;
   /** (צוות, תצוגה כיתתית) דריסות פרטניות של תלמידים בשיעור הזה */
   studentOverrides: StudentChange[];
+  /** (צוות, תצוגה כיתתית) שיעור אישי/קבוצתי: כל השיעורים האישיים הזהים במשבצת, עם שמות התלמידים */
+  groupLessons?: { lesson: Lesson; name: string }[];
   assignments: Assignment[];
   events: StudentEvent[];
 }
