@@ -5,7 +5,7 @@ import Modal from '../ui/Modal';
 import { addAssignment, reportException } from '@/lib/api';
 import { heDate, hhmm } from '@/lib/dates';
 import type { AssignmentType, ExceptionType, Occurrence, Person } from '@/lib/types';
-import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL } from '@/lib/types';
+import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL, cleanNote, isRemovedChange } from '@/lib/types';
 
 type Tab = 'exception' | 'assignment';
 
@@ -20,10 +20,11 @@ const EXCEPTION_ICONS: Record<ExceptionType, string> = {
  *  3. (מחנך/מנהל) עריכת שיעור: חד-פעמי או קבוע — מקצוע, מורה, שעות, ביטול
  */
 export default function TeacherQuickModal({
-  occurrence: occ, classId, students, preselectedStudentId, teachers, canEditSchedule, onChanged, onOpenEditor, onClose,
+  occurrence: occ, classId, students, preselectedStudentId, teachers, canEditSchedule, onChanged, onOpenEditor, onDelete, onOpenNotes, onClose,
 }: {
   occurrence: Occurrence; classId: string; students: Person[]; preselectedStudentId: string | null;
-  teachers: Person[]; canEditSchedule: boolean; onChanged: () => void; onOpenEditor: (o: Occurrence) => void; onClose: () => void;
+  teachers: Person[]; canEditSchedule: boolean; onChanged: () => void; onOpenEditor: (o: Occurrence) => void;
+  onDelete?: (o: Occurrence) => void; onOpenNotes?: () => void; onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('exception');
   const [pending, start] = useTransition();
@@ -76,19 +77,46 @@ export default function TeacherQuickModal({
             {occ.studentOverrides.map((c) => (
               <li key={c.id}>
                 {students.find((st) => st.id === c.student_id)?.full_name ?? 'תלמיד/ה'}:{' '}
-                {c.kind === 'cancelled' ? 'לא משתתף/ת' : c.new_subject ? `במקום זה: ${c.new_subject}` : CHANGE_LABEL[c.kind]}
+                {isRemovedChange(c) ? 'השיעור נמחק עבורו/ה' : c.kind === 'cancelled' ? 'לא משתתף/ת' : c.new_subject ? `במקום זה: ${c.new_subject}` : CHANGE_LABEL[c.kind]}
                 {c.until_date && <span className="text-xs text-violet-700"> (קבוע עד {heDate(c.until_date, { day: 'numeric', month: 'numeric' })})</span>}
-                {c.note && !c.note.startsWith('פעילות מיוחדת') && <span className="text-xs text-violet-700"> — {c.note}</span>}
+                {cleanNote(c.note) && !cleanNote(c.note)!.startsWith('פעילות מיוחדת') && <span className="text-xs text-violet-700"> — {cleanNote(c.note)}</span>}
               </li>
             ))}
           </ul>
         </div>
       )}
       {canEditSchedule && (
-        <button type="button" onClick={() => onOpenEditor(occ)}
-          className="btn mb-3 w-full border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100">
-          ✏️ עריכת השיעור (שינוי · ביטול · פעילות מיוחדת · צבע)
-        </button>
+        <div className="mb-3 grid grid-cols-[1fr_auto] gap-2">
+          <button type="button" onClick={() => onOpenEditor(occ)}
+            className="btn border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100">
+            ✏️ עריכת השיעור
+          </button>
+          {onDelete && (
+            <button type="button" onClick={() => onDelete(occ)} className="btn border border-red-200 bg-red-50 text-red-700 hover:bg-red-100">
+              🗑️ מחק שיעור
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* הערות ודיווחים של מורים בשיעור הזה — גלוי מיד למחנך */}
+      {occ.events.length > 0 && (
+        <section className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 p-2 text-sm">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="font-medium">📝 הערות בשיעור זה ({occ.events.length})</span>
+            {onOpenNotes && <button type="button" onClick={onOpenNotes} className="text-xs text-brand-700 underline">לכל ההערות בכיתה ←</button>}
+          </div>
+          <ul className="space-y-1">
+            {occ.events.map((e) => (
+              <li key={e.id} className={`text-xs ${e.retracted ? 'line-through opacity-60' : ''}`}>
+                <b>{e.student?.full_name ?? students.find((st) => st.id === e.student_id)?.full_name ?? ''}</b>
+                {' · '}{EXCEPTION_LABEL[e.type]}{e.status && ` (${EXCEPTION_STATUS_LABEL[e.status]})`}
+                {e.note && <> — {e.note}</>}
+                {e.reporter && <span className="text-slate-500"> · נרשם ע״י {e.reporter.full_name}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       <div className="mb-4 flex gap-1 rounded-lg bg-slate-100 p-1" role="tablist">
         {tabs.map((t) => (
@@ -142,16 +170,6 @@ export default function TeacherQuickModal({
             <p className="mt-1 text-xs text-slate-500">🔒 גלוי רק לתלמיד ולהוריו</p>
           </div>
 
-          {occ.events.length > 0 && (
-            <div className="rounded-lg bg-slate-50 p-2 text-xs">
-              <div className="mb-1 font-medium">כבר נרשם בשיעור זה:</div>
-              {occ.events.map((e) => (
-                <div key={e.id} className={e.retracted ? 'line-through opacity-60' : ''}>
-                  {EXCEPTION_LABEL[e.type]}{e.status && ` · ${EXCEPTION_STATUS_LABEL[e.status]}`}{e.note && ` — ${e.note}`}
-                </div>
-              ))}
-            </div>
-          )}
           <Footer pending={pending} msg={msg} label="שמירת הערה" disabled={!picked.size} />
         </form>
       )}

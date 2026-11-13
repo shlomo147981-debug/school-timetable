@@ -30,9 +30,14 @@ export async function loadSchedule(
       .eq('class_id', classId).gte('due_date', from).lte('due_date', to).order('due_date'),
     studentId
       ? supabase
-          .from('student_events').select('*')
+          .from('student_events')
+          .select('*, reporter:profiles!student_events_reporter_id_fkey(full_name)')
           .eq('student_id', studentId).gte('lesson_date', from).lte('lesson_date', to)
-      : Promise.resolve({ data: [] as StudentEvent[] }),
+      : supabase
+          .from('student_events')
+          .select('*, student:profiles!student_events_student_id_fkey(full_name), reporter:profiles!student_events_reporter_id_fkey(full_name), lesson:lessons!inner(class_id)')
+          .eq('lesson.class_id', classId).gte('lesson_date', from).lte('lesson_date', to)
+          .order('created_at', { ascending: false }),
   ]);
 
   const lessons = (lessonsRes.data ?? []) as Lesson[];

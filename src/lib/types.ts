@@ -3,7 +3,7 @@ export type View = 'day' | 'week' | 'month';
 export type ExceptionType = 'absence' | 'late' | 'missing_equipment' | 'misbehavior' | 'praise';
 export type ExceptionStatus = 'pending_justification' | 'justified' | 'unjustified';
 export type AssignmentType = 'homework' | 'exam' | 'quiz' | 'event';
-export type LessonChangeKind = 'cancelled' | 'substitute' | 'moved' | 'room_change' | 'modified';
+export type LessonChangeKind = 'cancelled' | 'substitute' | 'moved' | 'room_change' | 'modified' | 'removed';
 export type CalendarKind = 'holiday' | 'trip' | 'event';
 export type RequestKind = 'justify_absence' | 'appeal_note' | 'other';
 export type RequestStatus = 'open' | 'approved' | 'rejected';
@@ -86,6 +86,9 @@ export interface Assignment {
 }
 
 export interface StudentEvent {
+  /** שמות (נטען לצוות) */
+  student?: { full_name: string } | null;
+  reporter?: { full_name: string } | null;
   id: string;
   lesson_id: string;
   lesson_date: string;
@@ -166,6 +169,7 @@ export const CHANGE_LABEL: Record<LessonChangeKind, string> = {
   moved: 'שינוי שעה',
   room_change: 'החלפת חדר',
   modified: 'שינוי במערכת',
+  removed: 'נמחק',
 };
 
 export const CALENDAR_LABEL: Record<CalendarKind, string> = {
@@ -194,7 +198,15 @@ export const isSpecialNote = (n: string | null | undefined) => !!n && n.startsWi
 /** תיאור שהמחנך הוסיף לפעילות מיוחדת ("פעילות מיוחדת: …") */
 export const specialDetail = (n: string | null | undefined) => (isSpecialNote(n) ? n!.slice(SPECIAL_NOTE.length).replace(/^:\s*/, '') : '');
 
-export const EARLY_DISMISSAL_PREFIX = 'סיום יום לימודים מוקדם בשעה';
+export const EARLY_DISMISSAL_PREFIX = 'סיום יום לימודים בשעה';
+/** מזהה הודעת סיום יום (כולל הנוסח הישן "סיום יום לימודים מוקדם בשעה") */
+export const isDayEndNotice = (t: string | null | undefined) => !!t && t.startsWith('סיום יום לימודים');
+
+/** מחיקה מלאה לפני מיגרציה 0006: נשמרת כ-cancelled עם הסימון הזה בתחילת ה-note */
+export const REMOVED_MARK = '[[removed]]';
+export const isRemovedChange = (c: { kind: string; note?: string | null } | null | undefined) =>
+  !!c && (c.kind === 'removed' || !!c.note?.startsWith(REMOVED_MARK));
+export const cleanNote = (n: string | null | undefined) => (n?.startsWith(REMOVED_MARK) ? n.slice(REMOVED_MARK.length) || null : n ?? null);
 
 /** היקף החלת עריכה (כמו "אירוע זה / כל האירועים" ביומן) */
 export type EditScope = 'once' | 'week' | 'allDays' | 'year';

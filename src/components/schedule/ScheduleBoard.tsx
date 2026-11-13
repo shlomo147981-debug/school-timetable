@@ -41,6 +41,10 @@ export interface EditProps {
   onToggle: (o: Occurrence) => void;
   onSelectDay: (date: string) => void;
   onAdd: (date: string) => void;
+  /** צוות בתצוגה כיתתית: חיווי מרוכז "📝 N הערות" על כל שיעור */
+  notesSummary: boolean;
+  /** שיעורים שנמחקו מוצגים (דהויים, לשחזור) — רק במצב עריכה ✏️ */
+  showRemoved: boolean;
 }
 
 export default function ScheduleBoard(props: BoardProps) {
@@ -50,7 +54,7 @@ export default function ScheduleBoard(props: BoardProps) {
   const editMode = barMode !== 'none';
   const student = props.students.find((s) => s.id === props.studentId) ?? null;
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [editor, setEditor] = useState<{ date: string; occurrence: Occurrence | null } | null>(null);
+  const [editor, setEditor] = useState<{ date: string; occurrence: Occurrence | null; action?: 'cancel'; remove?: boolean } | null>(null);
   const [toast, setToast] = useState('');
   const { navigate } = useNav();
   const openEditor = (date: string, occurrence: Occurrence | null = null) => { setSelected(null); setEditor({ date, occurrence }); };
@@ -81,6 +85,8 @@ export default function ScheduleBoard(props: BoardProps) {
       return n;
     }),
     onAdd: (date) => openEditor(date),
+    notesSummary: staff && !props.studentId,
+    showRemoved: props.canEditSchedule && barMode === 'edit',
   };
 
 
@@ -147,6 +153,8 @@ export default function ScheduleBoard(props: BoardProps) {
           canEditSchedule={props.canEditSchedule}
           onChanged={props.onChanged}
           onOpenEditor={(o) => openEditor(o.date, o)}
+          onDelete={(o) => { setSelected(null); setEditor({ date: o.date, occurrence: o, action: 'cancel', remove: true }); }}
+          onOpenNotes={() => { setSelected(null); navigate({ page: 'notes' }); }}
           onClose={() => setSelected(null)}
         />
       )}
@@ -161,6 +169,8 @@ export default function ScheduleBoard(props: BoardProps) {
           teachers={props.teachers}
           date={editor.date}
           occurrence={editor.occurrence}
+          initialAction={editor.action}
+          initialRemove={editor.remove}
           students={props.students}
           student={student}
           onClose={() => setEditor(null)}

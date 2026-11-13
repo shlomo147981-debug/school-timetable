@@ -120,7 +120,8 @@ export default function BulkBar({
     // שיעור אישי של תלמיד אחר — לא נוגעים בו כשמוחקים לתלמידים נבחרים
     const occs = selected.flatMap(expand).filter((o) => !forS || !o.lesson.student_id || o.lesson.student_id === sid);
     const items: { o: Pick<Occurrence, 'lesson'>; row: ChangeRow; recurring?: boolean }[] = [];
-    const cancelRow = (lesson: Lesson, d: string): ChangeRow => ({ lesson_id: lesson.id, change_date: d, kind: 'cancelled' });
+    // מחיקה מלאה: השיעור ייעלם מהמערכת (לא "בוטל" עם קו חוצה)
+    const cancelRow = (lesson: Lesson, d: string): ChangeRow => ({ lesson_id: lesson.id, change_date: d, kind: 'removed' });
 
     if (delFreq === 'once') {
       occs.forEach((o) => items.push({ o, row: cancelRow(o.lesson, o.date) }));
@@ -153,7 +154,7 @@ export default function BulkBar({
     return run(async () => {
       for (const sid of sids) { const r = await deleteFor(sid); if (!r.ok) return r; }
       return { ok: true };
-    }, `${n} שיעורים ${delFreq === 'year' ? 'הוסרו עד סוף השנה' : 'בוטלו'}${delForStudents ? ` עבור ${delWho}` : ''}`);
+    }, `${n} שיעורים נמחקו${delFreq === 'year' ? ' עד סוף השנה' : ''}${delForStudents ? ` עבור ${delWho}` : ''}`);
   };
 
   const scopeNote = barMode === 'delete'
@@ -226,7 +227,7 @@ export default function BulkBar({
         <ConfirmDialog
           title="מחיקה קבועה"
           message={delForStudents
-            ? `${n} השיעורים המסומנים יבוטלו עבור ${delWho} בלבד, בכל שבוע עד סוף השנה. שאר הכיתה ממשיכה כרגיל.`
+            ? `${n} השיעורים המסומנים יימחקו מהמערכת של ${delWho} בלבד, בכל שבוע עד סוף השנה. שאר הכיתה ממשיכה כרגיל.`
             : `${n} השיעורים המסומנים יוסרו ממערכת הכיתה החל מ-${heDate(selected[0]?.date ?? '', { day: 'numeric', month: 'numeric' })} ועד סוף השנה.`}
           confirmLabel="מחיקה קבועה" danger pending={pending}
           onCancel={() => setConfirm(false)} onConfirm={() => { setConfirm(false); doDelete(); }} />

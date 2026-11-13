@@ -78,17 +78,6 @@ export default function ScheduleToolbar(props: {
           </>
         )}
 
-        {/* תלמיד/הורה: אישית מול כיתתית */}
-        {!isStaff(props.role) && props.studentId && (
-          <div className="flex rounded-lg bg-slate-100 p-1 text-sm">
-            {(['personal', 'class'] as const).map((s) => (
-              <button key={s} onClick={() => go({ scope: s === 'personal' ? null : s })}
-                className={`rounded-md px-3 py-1.5 ${props.scope === s ? 'bg-white font-medium shadow-sm' : 'text-slate-600'}`}>
-                {s === 'personal' ? 'אישית' : `כיתתית${props.className ? ` (${props.className})` : ''}`}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

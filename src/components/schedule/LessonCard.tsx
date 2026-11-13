@@ -14,8 +14,9 @@ const EVENT_STYLE: Record<string, string> = {
 };
 
 export default function LessonCard({
-  occ, compact = false, onClick, selectable = false, selected = false,
-}: { occ: Occurrence; compact?: boolean; onClick: () => void; selectable?: boolean; selected?: boolean }) {
+  occ, compact = false, onClick, selectable = false, selected = false, notesSummary = false,
+}: { occ: Occurrence; compact?: boolean; onClick: () => void; selectable?: boolean; selected?: boolean; notesSummary?: boolean }) {
+  const removed = occ.status === 'removed';
   const cancelled = occ.status === 'cancelled';
   const special = isSpecialNote(occ.change?.note) && !cancelled;
   const color = colorDef(occ.change?.new_color ?? occ.lesson.color);
@@ -30,6 +31,7 @@ export default function LessonCard({
       aria-pressed={selectable ? selected : undefined}
       className={`group relative w-full rounded-lg border p-2.5 text-start transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 ${
         selected ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-500'
+        : removed ? 'border-dashed border-slate-300 bg-white opacity-50'
         : cancelled ? 'border-slate-200 bg-slate-50 opacity-70'
         : color ? `border-slate-200 ${color.card}`
         : special ? 'border-fuchsia-300 bg-fuchsia-50'
@@ -67,9 +69,10 @@ export default function LessonCard({
             👤 {occ.studentOverrides.length} פרטני
           </span>
         )}
+        {removed && <span className="rounded bg-slate-700 px-1.5 py-0.5 text-[11px] text-white">🗑️ נמחק — לשחזור סמנו ← "שחזור"</span>}
         {special ? (
           <span className="rounded bg-fuchsia-200 px-1.5 py-0.5 text-[11px] text-fuchsia-900">✨ פעילות מיוחדת</span>
-        ) : occ.status !== 'normal' && (
+        ) : occ.status !== 'normal' && !removed && (
           <span className={`rounded px-1.5 py-0.5 text-[11px] ${cancelled ? 'bg-slate-200 text-slate-700' : 'bg-amber-200 text-amber-900'}`}>
             {CHANGE_LABEL[occ.status]}
           </span>
@@ -80,7 +83,12 @@ export default function LessonCard({
             {ASSIGNMENT_LABEL[a.type]}{!compact && `: ${a.title}`}
           </span>
         ))}
-        {visibleEvents.map((e) => (
+        {notesSummary ? (visibleEvents.length > 0 && (
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900"
+            title={visibleEvents.map((e) => `${e.student?.full_name ?? ''}: ${EXCEPTION_LABEL[e.type]}${e.reporter ? ` (${e.reporter.full_name})` : ''}`).join('\n')}>
+            📝 {visibleEvents.length} {visibleEvents.length === 1 ? 'הערה' : 'הערות'}
+          </span>
+        )) : visibleEvents.map((e) => (
           <span key={e.id} className={`rounded px-1.5 py-0.5 text-[11px] ${EVENT_STYLE[e.type]}`}>
             {EXCEPTION_LABEL[e.type]}
           </span>

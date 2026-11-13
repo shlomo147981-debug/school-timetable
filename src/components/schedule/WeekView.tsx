@@ -18,7 +18,7 @@ export default function WeekView({
     <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
       {weekDates(date).map((d, i) => {
         const holiday = holidayOn(d, calendar);
-        const list = occurrences.filter((o) => o.date === d);
+        const list = occurrences.filter((o) => o.date === d && (o.status !== 'removed' || edit.showRemoved));
         const allPicked = list.length > 0 && list.every((o) => edit.selected.has(o.key));
         return (
           <section key={d} className={`card flex flex-col p-2 ${d === today ? 'ring-2 ring-brand-500' : ''}`}>
@@ -42,7 +42,7 @@ export default function WeekView({
                 <p className="py-6 text-center text-xs text-slate-400">אין שיעורים</p>
               ) : (
                 list.map((o) => (
-                  <LessonCard key={o.key} occ={o} compact selectable={edit.editMode} selected={edit.selected.has(o.key)}
+                  <LessonCard key={o.key} occ={o} compact notesSummary={edit.notesSummary} selectable={edit.editMode} selected={edit.selected.has(o.key)}
                     onClick={() => (edit.editMode ? edit.onToggle(o) : onSelect(o))} />
                 ))
               )}

@@ -2,8 +2,21 @@
 // כל פעולה רצה עם ה-JWT של המשתמש המחובר, ולכן כפופה במלואה ל-RLS.
 import { getSupabase } from './supabase/client';
 import type { AssignmentType, ExceptionType, Lesson, LessonChangeKind, Profile, RequestKind, Role } from './types';
+import { REMOVED_MARK } from './types';
 
 export type Result = { ok: true } | { ok: false; error: string };
+
+// ---- תאימות: לפני מיגרציה 0006 אין סוג 'removed' — שומרים כ-cancelled עם סימון ----
+let removedKindSupported = true;
+const isBadEnum = (e: { code?: string; message?: string } | null) => !!e && (e.code === '22P02' || /invalid input value for enum/i.test(e.message ?? ''));
+const downgradeRemoved = <T extends { kind: string; note?: string | null }>(rows: T[]) =>
+  rows.map((r) => (r.kind === 'removed' ? { ...r, kind: 'cancelled', note: REMOVED_MARK + (r.note ?? '') } : r));
+async function writeRemovedCompat<T extends { kind: string; note?: string | null }>(rows: T[], write: (rows: T[]) => PromiseLike<{ error: { code?: string; message?: string } | null }>) {
+  if (!removedKindSupported) return write(downgradeRemoved(rows));
+  const r = await write(rows);
+  if (isBadEnum(r.error) && rows.some((x) => x.kind === 'removed')) { removedKindSupported = false; return write(downgradeRemoved(rows)); }
+  return r;
+}
 
 // ---- תאימות לאחור: לפני הרצת מיגרציה 0004 אין עמודות color/note/new_color ----
 const EXTRA_KEYS = ['color', 'note', 'new_color'] as const;
@@ -249,7 +262,7 @@ export async function applyChanges(rows: ChangeRow[]): Promise<Result> {
     new_room: null, new_subject: null, note: null, new_color: null, ...r,
   }));
   // lesson_changes.note קיים מאז 0001 — שומרים אותו גם לפני מיגרציה 0004
-  const { error } = await writeCompat(full, (p) => getSupabase().from('lesson_changes').upsert(p, { onConflict: 'lesson_id,change_date' }), true);
+  const { error } = await writeRemovedCompat(full, (rows) => writeCompat(rows, (p) => getSupabase().from('lesson_changes').upsert(p, { onConflict: 'lesson_id,change_date' }), true));
   return error ? fail('השמירה נכשלה (אין הרשאה?)') : ok();
 }
 
@@ -469,7 +482,7 @@ export async function applyStudentChanges(rows: StudentChangeRow[]): Promise<Res
     substitute_teacher_id: null, new_start_time: null, new_end_time: null, new_room: null,
     new_subject: null, new_color: null, note: null, until_date: null, ...r,
   }));
-  const { error } = await getSupabase().from('lesson_student_changes').upsert(full, { onConflict: 'lesson_id,student_id,change_date' });
+  const { error } = await writeRemovedCompat(full, (rows) => getSupabase().from('lesson_student_changes').upsert(rows, { onConflict: 'lesson_id,student_id,change_date' }));
   if (isMissingTable(error)) return fail('כדי לשמור שינוי פרטני לתלמיד יש להריץ ב-Supabase את SETUP_UPGRADE_0005.sql (גרסה 1.4.0).');
   return error ? fail('השמירה נכשלה (אין הרשאה?)') : ok();
 }

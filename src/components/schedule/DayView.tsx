@@ -12,8 +12,9 @@ export default function DayView({
   date, occurrences, calendar, onSelect, edit, onCalendarChanged,
 }: { date: string; occurrences: Occurrence[]; calendar: CalendarEvent[]; onSelect: (o: Occurrence) => void; edit: EditProps; onCalendarChanged?: () => void }) {
   const holiday = holidayOn(date, calendar);
-  const list = occurrences.filter((o) => o.date === date);
-  const active = list.filter((o) => o.status !== 'cancelled');
+  // שיעור שנמחק לא קיים בתצוגה; רק מחנך במצב עריכה רואה אותו (כדי לשחזר)
+  const list = occurrences.filter((o) => o.date === date && (o.status !== 'removed' || edit.showRemoved));
+  const active = list.filter((o) => o.status !== 'cancelled' && o.status !== 'removed');
   const allPicked = list.length > 0 && list.every((o) => edit.selected.has(o.key));
 
   // הפסקה = פער של 10+ דקות בין סיום שיעור (פעיל) לתחילת הבא
@@ -53,7 +54,7 @@ export default function DayView({
                 )}
                 <span className="absolute -start-[31px] bottom-8 h-3 w-3 rounded-full border-2 border-white bg-brand-500" />
                 <div className="mb-1 text-xs font-medium tabular-nums text-slate-500" dir="ltr">{hhmm(o.start)}</div>
-                <LessonCard occ={o} selectable={edit.editMode} selected={edit.selected.has(o.key)}
+                <LessonCard occ={o} notesSummary={edit.notesSummary} selectable={edit.editMode} selected={edit.selected.has(o.key)}
                   onClick={() => (edit.editMode ? edit.onToggle(o) : onSelect(o))} />
               </li>
             );

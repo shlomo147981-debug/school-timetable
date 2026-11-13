@@ -1,5 +1,6 @@
 import { addDays, schoolDow } from './dates';
 import type { Assignment, CalendarEvent, Lesson, LessonChange, Occurrence, StudentChange, StudentEvent } from './types';
+import { cleanNote, isDayEndNotice, isRemovedChange } from './types';
 
 /** "צופיה / הדסה", או תווית חופשית, או ריק */
 export function lessonTeacherName(l: Lesson) {
@@ -21,6 +22,23 @@ export function groupPersonal(occs: Occurrence[], nameOf: (id: string) => string
     const entry = { lesson: o.lesson, name: nameOf(o.lesson.student_id) };
     if (g) g.groupLessons!.push(entry);
     else { const first = { ...o, groupLessons: [entry] }; groups.set(key, first); out.push(first); }
+  }
+  return out;
+}
+
+/**
+ * הודעות "סיום יום לימודים בשעה …" שנובעות משינויים פרטניים (לתלמיד/הורה) —
+ * כאירועי לוח מדומים, בלי כפילות עם הודעה כיתתית קיימת.
+ */
+export function personalDayNotices(occs: Occurrence[], calendar: CalendarEvent[]): CalendarEvent[] {
+  const out: CalendarEvent[] = [];
+  const seen = new Set(calendar.map((e) => `${e.start_date}|${e.title}`));
+  for (const o of occs) {
+    if (!o.personalOverride || !isDayEndNotice(o.changeNote)) continue;
+    const title = o.changeNote!.split(' — ')[0];
+    if (seen.has(`${o.date}|${title}`) || calendar.some((e) => e.start_date <= o.date && e.end_date >= o.date && e.title.startsWith(title))) continue;
+    seen.add(`${o.date}|${title}`);
+    out.push({ id: `notice-${o.date}`, class_id: null, kind: 'event', title, start_date: o.date, end_date: o.date });
   }
   return out;
 }
@@ -87,8 +105,8 @@ export function buildOccurrences(args: {
         room: change?.new_room ?? lesson.room,
         teacherId: isSub ? change!.substitute_teacher_id : lesson.teacher_id,
         teacherName: isSub ? change!.substitute?.full_name ?? '' : lessonTeacherName(lesson),
-        status: change?.kind ?? 'normal',
-        changeNote: change?.note ?? null,
+        status: change ? (isRemovedChange(change) ? 'removed' : change.kind) : 'normal',
+        changeNote: cleanNote(change?.note),
         personal: lesson.student_id !== null,
         personalOverride: !!mine,
         studentOverrides: studentId ? [] : overrides,

@@ -29,7 +29,8 @@ export async function resolveContext(
   sp: Record<string, string | undefined>,
 ): Promise<ViewContext> {
   const ctx: ViewContext = {
-    classId: null, className: '', studentId: null, scope: sp.scope === 'class' ? 'class' : 'personal',
+    // מערכת אחת מאוחדת: תמיד המערכת הכיתתית + השינויים האישיים (אין יותר פיצול "כיתתית/אישית")
+    classId: null, className: '', studentId: null, scope: 'personal',
     classes: [], students: [], children: [], teachers: [], canEditSchedule: false, homeroomId: null,
   };
 

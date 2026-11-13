@@ -27,7 +27,7 @@ type CancelMode = 'lesson' | 'day' | 'early';
 const ACTIONS: { id: Action; label: string; icon: string }[] = [
   { id: 'add', label: 'הוספת שיעור', icon: '➕' },
   { id: 'edit', label: 'שינוי שיעור', icon: '✏️' },
-  { id: 'cancel', label: 'ביטול / שחרור מוקדם', icon: '🚫' },
+  { id: 'cancel', label: 'ביטול / מחיקה / סיום יום', icon: '🗑️' },
   { id: 'special', label: 'פעילות מיוחדת', icon: '✨' },
 ];
 
@@ -56,13 +56,17 @@ const overlaps = (l: Lesson, s: string, e: string) => hhmm(l.start_time) < e && 
 export interface EditorSaved { classId: string; date: string }
 
 export default function EventEditor({
-  classes, initialClassId, teachers, students = [], date, occurrence, student = null, onClose, onSaved,
+  classes, initialClassId, teachers, students = [], date, occurrence, student = null, initialAction, initialRemove = false, onClose, onSaved,
 }: {
   classes: { id: string; name: string }[];
   initialClassId: string;
   teachers: Person[];
   date: string;
   occurrence?: Occurrence | null;
+  /** פתיחה ישירה בפעולה מסוימת (למשל "🗑️ מחק שיעור") */
+  initialAction?: Action;
+  /** פתיחה במצב מחיקה מלאה */
+  initialRemove?: boolean;
   /** תלמידי הכיתה הנוכחית (לבורר קהל היעד) */
   students?: Person[];
   /** תלמיד מוצג בתפריט העליון — מסומן מראש בבורר */
@@ -75,7 +79,9 @@ export default function EventEditor({
 
   const occ = occurrence ?? null;
   const [classId, setClassId] = useState(initialClassId);
-  const [action, setAction] = useState<Action>(occ ? 'edit' : 'add');
+  const [action, setAction] = useState<Action>(initialAction ?? (occ ? 'edit' : 'add'));
+  /** ביטול (מוצג כמבוטל) או מחיקה (השיעור נעלם מהמערכת) */
+  const [removeMode, setRemoveMode] = useState(initialRemove);
   const [lessons, setLessons] = useState<Lesson[]>(occ ? [occ.lesson] : []);
   const [targetId, setTargetId] = useState<string>(occ?.lesson.id ?? '');
   const [startDate, setStartDate] = useState(occ?.date ?? date);
@@ -293,7 +299,9 @@ export default function EventEditor({
     // ---- ביטול / שחרור מוקדם
     if (action === 'cancel') {
       const reason = note.trim() || null;
-      const cancelRow = (l: Lesson, d: string, n: string | null = reason): ChangeRow => ({ lesson_id: l.id, change_date: d, kind: 'cancelled', note: n });
+      // מחיקה = 'removed' (השיעור לא קיים בתצוגה); ביטול = 'cancelled' (מוצג עם קו חוצה)
+      const cancelRow = (l: Lesson, d: string, n: string | null = reason, kind: 'cancelled' | 'removed' = removeMode ? 'removed' : 'cancelled'): ChangeRow => ({ lesson_id: l.id, change_date: d, kind, note: n });
+      const verb = removeMode ? 'נמחק' : 'בוטל';
       if (cancelMode === 'lesson' && target) {
         const bases = personalTarget ? groupLessons : [target];
         const isOverride = forStudents && !target.student_id;
@@ -301,7 +309,7 @@ export default function EventEditor({
           const list = [...new Set(bases.flatMap((b) => (freq === 'year' ? [b] : slotOf(b))))];
           const subj = freq === 'year' ? `"${target.subject}"` : `כל שיעורי המשבצת ${hhmm(target.start_time)}`;
           const text = isOverride
-            ? `לבטל את ${subj}${whoText} בלבד, בכל שבוע עד סוף השנה? שאר הכיתה ממשיכה כרגיל.`
+            ? `${removeMode ? 'למחוק' : 'לבטל'} את ${subj}${whoText} בלבד, בכל שבוע עד סוף השנה? שאר הכיתה ממשיכה כרגיל.`
             : `להסיר את ${subj}${whoText} מהמערכת הקבועה החל מ-${heDate(startDate, { day: 'numeric', month: 'numeric' })}?`;
           setConfirm({ text, run: () => run(
             isOverride
@@ -312,26 +320,26 @@ export default function EventEditor({
                 const rest = list.filter((l) => !l.specific_date);
                 return rest.length ? endLessons(rest.map((l) => l.id), startDate) : { ok: true };
               },
-            (isOverride ? `בוטל${whoText} עד סוף השנה` : `הוסר מהמערכת${whoText}`)) });
+            (isOverride ? `${verb}${whoText} עד סוף השנה` : `הוסר מהמערכת${whoText}`)) });
           return;
         }
         const items = bases.flatMap((b) => (freq === 'once' ? [{ lesson: b, row: cancelRow(b, startDate) }]
           : weekDates(startDate).flatMap((d) => slotOf(b).filter((l) => activeOn(l, d)).map((l) => ({ lesson: l, row: cancelRow(l, d) })))));
-        return run(forEachAudience((sid) => commitChanges(sid, items)), (freq === 'week' ? 'השיעור בוטל לכל השבוע' : 'השיעור בוטל') + whoText);
+        return run(forEachAudience((sid) => commitChanges(sid, items)), `השיעור ${verb}${freq === 'week' ? ' לכל השבוע' : ''}${whoText}`);
       }
       const ds = dates();
       if (cancelMode === 'day') {
         const itemsFor = (sid: string | null) => ds.flatMap((d) => lessons.filter((l) => relevantFor(sid)(l) && activeOn(l, d)).map((l) => ({ lesson: l, row: cancelRow(l, d) })));
         if (!audienceIds.some((sid) => itemsFor(sid).length)) { setError('אין שיעורים לבטל בתאריכים שנבחרו'); return; }
         return run(forEachAudience((sid) => { const it = itemsFor(sid); return it.length ? commitChanges(sid, it) : Promise.resolve({ ok: true } as Result); }),
-          `השיעורים בוטלו${whoText}`);
+          `השיעורים ${removeMode ? 'נמחקו' : 'בוטלו'}${whoText}`);
       }
       // שחרור מוקדם: ביטול כל השיעורים מהשעה שנבחרה + הודעה (לכל הכיתה — גם אירוע בלוח)
       const msg = `${EARLY_DISMISSAL_PREFIX} ${earlyTime}`;
       return run(async () => {
         const r = await forEachAudience((sid) => {
           const items = ds.flatMap((d) => lessons.filter((l) => relevantFor(sid)(l) && activeOn(l, d) && hhmm(l.start_time) >= earlyTime)
-            .map((l) => ({ lesson: l, row: cancelRow(l, d, reason ?? msg) })));
+            .map((l) => ({ lesson: l, row: cancelRow(l, d, reason ? `${msg} — ${reason}` : msg, 'removed') })));
           return items.length ? commitChanges(sid, items) : Promise.resolve({ ok: true } as Result);
         })();
         if (!r.ok) return r;
@@ -445,11 +453,23 @@ export default function EventEditor({
               <div className="flex-1">
                 <span className="label">מה לבטל?</span>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {([['lesson', 'שיעור אחד'], ['day', 'כל היום'], ['early', 'שחרור מוקדם']] as const).map(([id, l]) => (
+                  {([['lesson', 'שיעור אחד'], ['day', 'כל היום'], ['early', 'סיום יום']] as const).map(([id, l]) => (
                     <button key={id} type="button" onClick={() => setCancelMode(id)}
                       className={`rounded-lg border px-2 py-2 text-sm ${cancelMode === id ? 'border-brand-500 bg-brand-50 font-medium' : 'border-slate-200'}`}>{l}</button>
                   ))}
                 </div>
+                {cancelMode !== 'early' && (
+                  <div className="mt-2 grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="אופן">
+                    <button type="button" role="radio" aria-checked={!removeMode} onClick={() => setRemoveMode(false)}
+                      className={`rounded-lg border px-2 py-2 text-sm ${!removeMode ? 'border-amber-500 bg-amber-50 font-medium' : 'border-slate-200'}`}>
+                      🚫 ביטול<span className="block text-[11px] text-slate-500">יוצג כ"בוטל"</span>
+                    </button>
+                    <button type="button" role="radio" aria-checked={removeMode} onClick={() => setRemoveMode(true)}
+                      className={`rounded-lg border px-2 py-2 text-sm ${removeMode ? 'border-red-500 bg-red-50 font-medium text-red-800' : 'border-slate-200'}`}>
+                      🗑️ מחיקה<span className="block text-[11px] text-slate-500">השיעור ייעלם מהמערכת</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -508,9 +528,9 @@ export default function EventEditor({
               )}
               {action === 'cancel' && cancelMode === 'early' && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <label className="label" htmlFor="ev-early">🔔 סיום מערכת לתלמידים בשעה</label>
+                  <label className="label" htmlFor="ev-early">🔔 מתי המערכת מסתיימת לתלמידים?</label>
                   <input id="ev-early" type="time" className="input w-36" value={earlyTime} onChange={(e) => setEarlyTime(e.target.value)} />
-                  <p className="mt-1 text-xs text-amber-900">כל השיעורים מהשעה הזו ועד סוף היום יבוטלו, ותוצג הודעה: "{EARLY_DISMISSAL_PREFIX} {earlyTime}"</p>
+                  <p className="mt-1 text-xs text-amber-900">כל השיעורים מהשעה הזו ועד סוף היום יוסרו{forStudents ? ' לתלמידים שנבחרו' : ''}, ותוצג לתלמידים ולהורים הודעה: "{EARLY_DISMISSAL_PREFIX} {earlyTime}"</p>
                 </div>
               )}
             </div>
