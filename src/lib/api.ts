@@ -372,6 +372,8 @@ export async function updateLessonsPartial(ids: string[], patch: Partial<LessonF
 /** הוספת כמה שיעורים בבת אחת (למשל "כל הימים" / "רק השבוע") */
 export async function addLessons(rows: (LessonFields & {
   classId: string; date: string; dayOfWeek: number; recurring: boolean; studentId?: string | null;
+  /** שיעור חוזר: תאריך אחרון (כולל) */
+  validTo?: string | null;
 })[]): Promise<Result> {
   for (const r of rows) { const v = validate(r); if (v) return fail(v); }
   const { error } = await writeCompat(rows.map((r) => ({
@@ -381,6 +383,7 @@ export async function addLessons(rows: (LessonFields & {
     day_of_week: r.dayOfWeek,
     specific_date: r.recurring ? null : r.date,
     valid_from: r.recurring ? r.date : null,
+    valid_to: r.recurring ? r.validTo ?? null : null,
   })), (p) => getSupabase().from('lessons').insert(p));
   return error ? fail('הוספת השיעורים נכשלה (אין הרשאה?)') : ok();
 }
@@ -500,11 +503,11 @@ export async function deleteStudentChanges(ids: string[]): Promise<Result> {
  */
 export async function commitChanges(
   studentId: string | null,
-  items: { lesson: Pick<Lesson, 'id' | 'student_id'>; row: ChangeRow; recurring?: boolean }[],
+  items: { lesson: Pick<Lesson, 'id' | 'student_id'>; row: ChangeRow; recurring?: boolean; until?: string }[],
 ): Promise<Result> {
   const classRows = items.filter((i) => !studentId || i.lesson.student_id).map((i) => i.row);
   const studentRows = items.filter((i) => studentId && !i.lesson.student_id).map((i) => ({
-    ...i.row, student_id: studentId!, until_date: i.recurring ? schoolYearEnd(i.row.change_date) : null,
+    ...i.row, student_id: studentId!, until_date: i.until ?? (i.recurring ? schoolYearEnd(i.row.change_date) : null),
   }));
   if (classRows.length) { const r = await applyChanges(classRows); if (!r.ok) return r; }
   if (studentRows.length) { const r = await applyStudentChanges(studentRows); if (!r.ok) return r; }
@@ -587,4 +590,45 @@ export async function deleteAssignment(id: string): Promise<Result> {
   if (error) return fail('המחיקה נכשלה');
   if (!count) return fail('אין הרשאה למחוק את האירוע');
   return ok();
+}
+
+// =====================================================================
+// גרסה 1.9.0 — עריכת אירועי לוח (חגים, חופשות, טיולים) + הערה
+// =====================================================================
+let calNoteSupported = true;
+export const calendarNoteSupported = () => calNoteSupported;
+
+export interface CalendarFields { title: string; kind: 'holiday' | 'trip' | 'event'; startDate: string; endDate: string; note?: string | null }
+
+const calRow = (f: CalendarFields, withNote: boolean) => ({
+  title: f.title.trim(), kind: f.kind, start_date: f.startDate, end_date: f.endDate,
+  ...(withNote ? { note: f.note?.trim() || null } : {}),
+});
+const calValidate = (f: CalendarFields) =>
+  !f.title.trim() ? 'יש להזין שם לאירוע' : !f.startDate || !f.endDate || f.endDate < f.startDate ? 'תאריך הסיום לפני תאריך ההתחלה' : null;
+
+/** עדכון אירוע לוח: שם, סוג, תאריכים, הערה (הערה — אחרי מיגרציה 0008) */
+export async function updateCalendarEvent(id: string, f: CalendarFields): Promise<Result> {
+  const v = calValidate(f); if (v) return fail(v);
+  const s = getSupabase();
+  let r = await s.from('calendar_events').update(calRow(f, calNoteSupported), { count: 'exact' }).eq('id', id);
+  if (r.error && calNoteSupported && /note|column|schema cache/i.test(r.error.message)) {
+    calNoteSupported = false;
+    r = await s.from('calendar_events').update(calRow(f, false), { count: 'exact' }).eq('id', id);
+  }
+  if (r.error) return fail('השמירה נכשלה');
+  if (!r.count) return fail('אין הרשאה לערוך את האירוע');
+  return ok();
+}
+
+/** אירוע לוח חדש עם סוג והערה */
+export async function addCalendarEventFull(classId: string, f: CalendarFields): Promise<Result> {
+  const v = calValidate(f); if (v) return fail(v);
+  const s = getSupabase();
+  let r = await s.from('calendar_events').insert({ class_id: classId, ...calRow(f, calNoteSupported) });
+  if (r.error && calNoteSupported && /note|column|schema cache/i.test(r.error.message)) {
+    calNoteSupported = false;
+    r = await s.from('calendar_events').insert({ class_id: classId, ...calRow(f, false) });
+  }
+  return r.error ? fail('הוספת האירוע נכשלה') : ok();
 }

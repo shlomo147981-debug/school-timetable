@@ -1,10 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import { SCHOOL_DAYS, heDate, monthGrid } from '@/lib/dates';
 import { deleteAssignment, deleteCalendarEvent } from '@/lib/api';
 import type { Assignment, CalendarEvent, StudentEvent } from '@/lib/types';
-import { ASSIGNMENT_LABEL, CALENDAR_LABEL } from '@/lib/types';
-import { eventDetails, eventsOn } from './DayHeaderEvents';
+import { ASSIGNMENT_LABEL } from '@/lib/types';
+import { STYLE, eventDetails, eventLabel, eventsOn } from './DayHeaderEvents';
+import CalendarEventDialog from '../modals/CalendarEventDialog';
 import DeleteButton from '../ui/DeleteButton';
 
 /** תצוגת מאקרו: מבחנים, בחנים, משימות, חופשות ואירועים כיתתיים. מחנך/מנהל: 🗑️ מחיקה */
@@ -15,8 +17,10 @@ export default function MonthView({
   events: StudentEvent[]; onOpenDay: (d: string) => void; canEdit?: boolean; onChanged?: () => void;
 }) {
   const month = date.slice(0, 7);
+  const [editing, setEditing] = useState<CalendarEvent | null>(null);
   return (
     <div className="card overflow-hidden">
+      {editing && <CalendarEventDialog event={editing} onClose={() => setEditing(null)} onChanged={() => onChanged?.()} />}
       <div className="grid grid-cols-5 border-b border-slate-200 bg-slate-50 text-center text-sm font-medium">
         {SCHOOL_DAYS.map((d) => <div key={d} className="py-2">{d}</div>)}
       </div>
@@ -44,8 +48,11 @@ export default function MonthView({
                 </div>
                 <div className="space-y-0.5">
                   {cal.map((e) => (
-                    <div key={e.id} className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${e.kind === 'holiday' ? 'bg-teal-100 text-teal-900' : e.kind === 'trip' ? 'bg-lime-100 text-lime-900' : 'bg-indigo-100 text-indigo-900'}`}>
-                      <span className="min-w-0 flex-1 truncate">{CALENDAR_LABEL[e.kind]}: {e.title}</span>
+                    <div key={e.id} className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${STYLE[e.kind]} ${e.source === 'il-calendar' ? 'font-semibold' : ''}`}>
+                      {canEdit && e.class_id ? (
+                        <button type="button" className="min-w-0 flex-1 truncate text-start hover:underline" aria-label={`עריכת אירוע: ${e.title}`}
+                          onClick={(ev) => { ev.stopPropagation(); setEditing(e); }}>{eventLabel(e)}</button>
+                      ) : <span className="min-w-0 flex-1 truncate" title={e.note ?? undefined}>{eventLabel(e)}</span>}
                       {canEdit && e.class_id && (
                         <DeleteButton kind="event" compact details={eventDetails(e)} onDelete={() => deleteCalendarEvent(e.id)} onDone={onChanged} />
                       )}

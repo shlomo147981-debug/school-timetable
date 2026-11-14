@@ -36,7 +36,7 @@ export default function DayView({
         )}
       </div>
       {holiday ? (
-        <p className="py-10 text-center text-slate-500">🌴 אין לימודים — {holiday.title}</p>
+        <p className="py-10 text-center text-slate-500">🌴 אין לימודים — {holiday.title}{holiday.note && <span className="mt-1 block text-sm">💬 {holiday.note}</span>}</p>
       ) : list.length === 0 ? (
         <p className="py-10 text-center text-slate-500">אין שיעורים ביום זה</p>
       ) : (

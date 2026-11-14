@@ -67,6 +67,10 @@ export interface LessonChange {
 }
 
 export interface CalendarEvent {
+  /** הערה לתלמידים ולהורים (מיגרציה 0008) */
+  note?: string | null;
+  /** 'il-calendar' = חג/מועד מלוח השנה הישראלי (נשמר באיפוס מערכת) */
+  source?: string | null;
   id: string;
   class_id: string | null;
   kind: CalendarKind;
@@ -210,4 +214,4 @@ export const isRemovedChange = (c: { kind: string; note?: string | null } | null
 export const cleanNote = (n: string | null | undefined) => (n?.startsWith(REMOVED_MARK) ? n.slice(REMOVED_MARK.length) || null : n ?? null);
 
 /** היקף החלת עריכה (כמו "אירוע זה / כל האירועים" ביומן) */
-export type EditScope = 'once' | 'week' | 'allDays' | 'year';
+export type EditScope = 'once' | 'week' | 'allDays' | 'until' | 'year';

@@ -8,7 +8,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  addCalendarEvent, addLessons, commitChanges, dbSupportsExtras, endLesson, endLessons, fetchClassLessons,
+  addCalendarEvent, addCalendarEventFull, addLessons, commitChanges, schoolYearEnd, dbSupportsExtras, endLesson, endLessons, fetchClassLessons,
   fetchClassPersonalLessons, fetchClassStudents,
   updateLessonPermanent, updateLessonsPartial, type ChangeRow, type LessonFields, type Result,
 } from '@/lib/api';
@@ -35,6 +35,7 @@ const FREQS: { id: EditScope; label: string }[] = [
   { id: 'once', label: 'חד-פעמי (רק בתאריך שנבחר)' },
   { id: 'week', label: 'רק השבוע הנוכחי' },
   { id: 'allDays', label: "כל ימי השבוע (א'-ה') באותה שעה" },
+  { id: 'until', label: 'חוזר כל שבוע עד תאריך…' },
   { id: 'year', label: 'חוזר כל שבוע עד סוף השנה (קבוע)' },
 ];
 
@@ -94,6 +95,10 @@ export default function EventEditor({
   const [teacherText, setTeacherText] = useState(occ?.lesson.teacher_label ?? '');
   const [room, setRoom] = useState(occ?.room ?? '');
   const [freq, setFreq] = useState<EditScope>('once');
+  /** "חוזר כל שבוע עד תאריך": התאריך האחרון (כולל). ברירת מחדל — סוף שנת הלימודים */
+  const [untilDate, setUntilDate] = useState(() => schoolYearEnd(occ?.date ?? date));
+  /** "כל היום" בהוספה: סוג האירוע בלוח */
+  const [dayKind, setDayKind] = useState<'event' | 'holiday' | 'trip'>('event');
   const [color, setColor] = useState<string | null>(occ?.change?.new_color ?? occ?.lesson.color ?? null);
   const [note, setNote] = useState(occ ? (isSpecialNote(occ.change?.note) ? specialDetail(occ.change?.note) : occ.change?.note ?? occ.lesson.note ?? '') : '');
   const [special, setSpecial] = useState<SpecialValue>({ preset: 'trip', text: '' });
@@ -162,9 +167,9 @@ export default function EventEditor({
 
   // אילו תדירויות מותרות בכל פעולה
   const allowed: EditScope[] =
-    action === 'add' ? (allDay ? ['once'] : ['once', 'week', 'allDays', 'year'])
-    : action === 'edit' ? (target?.specific_date ? ['once', 'year'] : ['once', 'week', 'allDays', 'year'])
-    : action === 'cancel' ? (cancelMode === 'lesson' ? (target?.specific_date ? ['once', 'year'] : ['once', 'week', 'allDays', 'year']) : ['once', 'week'])
+    action === 'add' ? (allDay ? ['once'] : ['once', 'week', 'allDays', 'until', 'year'])
+    : action === 'edit' ? (target?.specific_date ? ['once', 'year'] : ['once', 'week', 'allDays', 'until', 'year'])
+    : action === 'cancel' ? (cancelMode === 'lesson' ? (target?.specific_date ? ['once', 'year'] : ['once', 'week', 'allDays', 'until', 'year']) : ['once', 'week'])
     : ['once', 'week'];
   useEffect(() => { if (!allowed.includes(freq)) setFreq(allowed[0]); }, [allowed.join(), freq]); // eslint-disable-line react-hooks/exhaustive-deps
   // "כל היום" בהוספה = אירוע לוח לכל הכיתה — לא זמין לתלמידים נבחרים
@@ -180,6 +185,12 @@ export default function EventEditor({
   /** תאריכים שהפעולה חלה עליהם (חד-פעמי: טווח; השבוע: א'-ה' של שבוע תאריך ההתחלה) */
   const dates = () => (freq === 'week' ? weekDates(startDate) : schoolDaysBetween(startDate, showEndDate ? endDate : startDate));
   /** אותה משבצת שעה בכל ימי השבוע (כיתתי, או של אותו תלמיד אם השיעור אישי) */
+  /** כל המופעים השבועיים של שיעור בטווח [from, to] (כולל) */
+  const weeklyDates = (l: Lesson, from: string, to: string) => {
+    const out: string[] = [];
+    for (let d = from; d <= to && out.length < 60; d = addDays(d, 1)) if (activeOn(l, d)) out.push(d);
+    return out;
+  };
   const slotOf = (l: Lesson) => lessons.filter((x) => (x.student_id ?? null) === (l.student_id ?? null) && !x.specific_date && x.start_time === l.start_time);
   const whoText = personalTarget
     ? (groupLessons.length > 1 ? ` ל-${groupLessons.length} תלמידים` : ` עבור ${nameOf(target!.student_id!)}`)
@@ -217,19 +228,21 @@ export default function EventEditor({
     if (showEndDate && endDate < startDate) { setError('תאריך הסיום לפני תאריך ההתחלה'); return; }
     if (showTime && endTime <= startTime) { setError('שעת הסיום חייבת להיות אחרי שעת ההתחלה'); return; }
     if (needsTarget && !target) { setError('בחרו שיעור מהרשימה'); return; }
+    if (freq === 'until' && (!untilDate || untilDate < startDate)) { setError('תאריך הסיום חייב להיות אחרי תאריך ההתחלה'); return; }
 
     // ---- הוספה (תלמידים נבחרים: שיעור אישי לכל אחד מהם)
     if (action === 'add') {
       if (!title.trim()) { setError('יש להזין שם לשיעור / לפעילות'); return; }
       if (allDay) {
-        return run(() => addCalendarEvent({ classId, kind: 'event', title: title.trim(), startDate, endDate: endDate < startDate ? startDate : endDate }),
-          `נוסף אירוע: ${title.trim()}`);
+        return run(() => addCalendarEventFull(classId, { kind: dayKind, title, startDate, endDate: endDate < startDate ? startDate : endDate, note }),
+          `נוסף ${dayKind === 'holiday' ? 'יום חופשה' : 'אירוע'}: ${title.trim()}`);
       }
       const rows = audienceIds.flatMap((sid) => {
         const f = { ...fieldsForAdd(), classId, studentId: sid };
         return freq === 'once' ? dates().map((d) => ({ ...f, date: d, dayOfWeek: schoolDow(d)!, recurring: false }))
           : freq === 'week' ? weekDates(startDate).map((d) => ({ ...f, date: d, dayOfWeek: schoolDow(d)!, recurring: false }))
           : freq === 'allDays' ? weekDates(startDate).map((d) => ({ ...f, date: startDate, dayOfWeek: schoolDow(d)!, recurring: true }))
+          : freq === 'until' ? [{ ...f, date: startDate, dayOfWeek: schoolDow(startDate)!, recurring: true, validTo: untilDate }]
           : [{ ...f, date: startDate, dayOfWeek: schoolDow(startDate)!, recurring: true }];
       });
       return run(() => addLessons(rows), `נוסף: ${title.trim()}${whoText}`);
@@ -261,18 +274,21 @@ export default function EventEditor({
       });
       const bases = personalTarget ? groupLessons : [t];
       const isOverride = forStudents && !t.student_id;
-      if (freq === 'once' || freq === 'week' || isOverride) {
+      if (freq === 'once' || freq === 'week' || freq === 'until' || isOverride) {
         if (changed.teacher && teacherLabel && !teacherId) { setError('בשינוי לתאריך / לתלמידים יש לבחור מורה מהרשימה'); return; }
         const itemsFor = () => bases.flatMap((b) =>
           freq === 'once' ? (activeOn(b, startDate) ? [{ lesson: b, row: row(b.id, startDate) }] : [])
           : freq === 'week' ? weekDates(startDate).flatMap((d) => slotOf(b).filter((l) => activeOn(l, d)).map((l) => ({ lesson: l, row: row(l.id, d) })))
+          // עד תאריך: לתלמידים — דריסה חוזרת עד התאריך; לכיתה — שינוי לכל מופע שבועי בטווח
+          : freq === 'until' ? (isOverride ? [{ lesson: b, row: row(b.id, startDate), until: untilDate }]
+            : weeklyDates(b, startDate, untilDate).map((d) => ({ lesson: b, row: row(b.id, d) })))
           // תלמידים + קבוע: דריסה פרטנית שחוזרת כל שבוע עד סוף השנה
           : freq === 'allDays' ? slotOf(b).map((l) => ({ lesson: l, row: row(l.id, startDate), recurring: true }))
           : [{ lesson: b, row: row(b.id, startDate), recurring: true }]);
         const items = itemsFor();
         if (!items.length) { setError('השיעור לא מתקיים בתאריך שנבחר'); return; }
         return run(forEachAudience((sid) => commitChanges(sid, items)),
-          (freq === 'week' ? 'השינוי נשמר לכל השבוע' : freq === 'once' ? 'השינוי נשמר' : 'השינוי נשמר עד סוף השנה') + whoText);
+          (freq === 'week' ? 'השינוי נשמר לכל השבוע' : freq === 'once' ? 'השינוי נשמר' : freq === 'until' ? `השינוי נשמר עד ${heDate(untilDate, { day: 'numeric', month: 'numeric', year: '2-digit' })}` : 'השינוי נשמר עד סוף השנה') + whoText);
       }
       const full: LessonFields = {
         subject: title, teacher_id: teacherId, co_teacher_id: t.co_teacher_id, teacher_label: teacherLabel,
@@ -324,8 +340,11 @@ export default function EventEditor({
           return;
         }
         const items = bases.flatMap((b) => (freq === 'once' ? [{ lesson: b, row: cancelRow(b, startDate) }]
+          : freq === 'until' ? (isOverride ? [{ lesson: b, row: cancelRow(b, startDate), until: untilDate }]
+            : weeklyDates(b, startDate, untilDate).map((d) => ({ lesson: b, row: cancelRow(b, d) })))
           : weekDates(startDate).flatMap((d) => slotOf(b).filter((l) => activeOn(l, d)).map((l) => ({ lesson: l, row: cancelRow(l, d) })))));
-        return run(forEachAudience((sid) => commitChanges(sid, items)), `השיעור ${verb}${freq === 'week' ? ' לכל השבוע' : ''}${whoText}`);
+        if (!items.length) { setError('השיעור לא מתקיים בטווח שנבחר'); return; }
+        return run(forEachAudience((sid) => commitChanges(sid, items)), `השיעור ${verb}${freq === 'week' ? ' לכל השבוע' : freq === 'until' ? ` עד ${heDate(untilDate, { day: 'numeric', month: 'numeric', year: '2-digit' })}` : ''}${whoText}`);
       }
       const ds = dates();
       if (cancelMode === 'day') {
@@ -486,6 +505,14 @@ export default function EventEditor({
           <div className={row}>
             <span className={icon} aria-hidden>🕒</span>
             <div className="flex-1 space-y-3">
+              {action === 'add' && allDay && (
+                <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="סוג האירוע">
+                  {([['event', '📌 אירוע'], ['holiday', '🏖️ חופשה'], ['trip', '🚌 טיול']] as const).map(([k, l]) => (
+                    <button key={k} type="button" role="radio" aria-checked={dayKind === k} onClick={() => setDayKind(k)}
+                      className={`rounded-lg border px-2 py-1.5 text-sm ${dayKind === k ? 'border-brand-500 bg-brand-50 font-medium' : 'border-slate-200'}`}>{l}</button>
+                  ))}
+                </div>
+              )}
               {(action === 'special' || (action === 'add' && !forStudents)) && (
                 <label className="flex cursor-pointer items-center justify-between">
                   <span className="font-medium">כל היום</span>
@@ -594,6 +621,15 @@ export default function EventEditor({
               <select id="ev-freq" className="input" value={freq} onChange={(e) => setFreq(e.target.value as EditScope)}>
                 {FREQS.filter((f) => allowed.includes(f.id)).map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
               </select>
+              {freq === 'until' && (
+                <div className="mt-2 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
+                  <label className="label" htmlFor="ev-until">📅 תאריך אחרון / סיום חזרה</label>
+                  <input id="ev-until" type="date" className="input w-48" min={startDate} value={untilDate} onChange={(e) => setUntilDate(e.target.value)} />
+                  <p className="mt-1 text-xs text-slate-600">
+                    כל שבוע מ-{heDate(startDate, { day: 'numeric', month: 'numeric' })} ועד {heDate(untilDate, { day: 'numeric', month: 'numeric', year: 'numeric' })} (כולל). אחר כך — חזרה למערכת הרגילה.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
