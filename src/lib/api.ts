@@ -568,3 +568,23 @@ export async function changeMyPassword(current: string, next: string): Promise<R
   if (/reauthentic|nonce/i.test(m)) return fail('נדרש אימות מחדש — התנתקו, התחברו שוב ונסו שנית');
   return fail('שינוי הסיסמה נכשל — נסו שוב');
 }
+
+// =====================================================================
+// גרסה 1.8.0 — מחיקת הערות ואירועים (מחנך/מנהל; RLS אוכף)
+// =====================================================================
+
+/** מחיקת הערה/דיווח (גם של מורה מקצועי) */
+export async function deleteStudentEvent(id: string): Promise<Result> {
+  const { error, count } = await getSupabase().from('student_events').delete({ count: 'exact' }).eq('id', id);
+  if (error) return fail('המחיקה נכשלה');
+  if (!count) return fail('אין הרשאה למחוק את ההערה');
+  return ok();
+}
+
+/** מחיקת מבחן / בוחן / משימה / אירוע בשיעור */
+export async function deleteAssignment(id: string): Promise<Result> {
+  const { error, count } = await getSupabase().from('assignments').delete({ count: 'exact' }).eq('id', id);
+  if (error) return fail('המחיקה נכשלה');
+  if (!count) return fail('אין הרשאה למחוק את האירוע');
+  return ok();
+}

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
-import { fetchClassNotes, type ClassNote } from '@/lib/api';
+import { deleteStudentEvent, fetchClassNotes, type ClassNote } from '@/lib/api';
+import DeleteButton from '../ui/DeleteButton';
 import { addDays, heDate, todayISO } from '@/lib/dates';
 import { getNotesSeen, setNotesSeen } from '@/lib/notesSeen';
 import type { ExceptionType, Profile } from '@/lib/types';
@@ -47,6 +48,10 @@ export default function NotesScreen({ me }: { me: Profile }) {
   }, [classId, days]);
   useEffect(() => { load(); }, [load]);
 
+  // מחנך הכיתה / מנהל — כל הערה; מורה — את שלו (RLS אוכף בכל מקרה)
+  const homeroomOfSelected = me.is_admin || (me.role === 'homeroom' && classes.find((c) => c.id === classId)?.homeroom_teacher_id === me.id);
+  const canDelete = (n: ClassNote) => homeroomOfSelected || n.reporter_id === me.id;
+  const removeLocal = (id: string) => setNotes((list) => (list ?? []).filter((x) => x.id !== id));
   const isNew = (n: ClassNote) => n.created_at > seen && n.reporter_id !== me.id;
   const teachers = useMemo(() => [...new Set((notes ?? []).map((n) => n.reporter?.full_name ?? '—'))].sort(), [notes]);
   const shown = (notes ?? []).filter((n) =>
@@ -119,6 +124,11 @@ export default function NotesScreen({ me }: { me: Profile }) {
                     {n.status && ` · ${EXCEPTION_STATUS_LABEL[n.status as ExceptionStatus]}`}
                   </div>
                 </div>
+                {canDelete(n) && (
+                  <DeleteButton kind="note"
+                    details={`${n.student?.full_name ?? ''} · ${EXCEPTION_LABEL[n.type]} · ${n.lesson?.subject ?? ''}${n.note ? ` — ${n.note}` : ''} (נרשם ע״י ${n.reporter?.full_name ?? 'משתמש שנמחק'})`}
+                    onDelete={() => deleteStudentEvent(n.id)} onDone={() => removeLocal(n.id)} />
+                )}
               </article>
             ))}
           </div>

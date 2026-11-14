@@ -76,6 +76,7 @@ export interface CalendarEvent {
 }
 
 export interface Assignment {
+  created_by?: string | null;
   id: string;
   lesson_id: string | null;
   class_id: string;

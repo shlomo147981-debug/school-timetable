@@ -17,6 +17,8 @@ export interface BoardProps {
   date: string;
   today: string;
   viewerRole: Role;
+  /** מזהה המשתמש המחובר (ליוצר הערה/משימה — רשאי למחוק את שלו) */
+  viewerId: string;
   classId: string;
   studentId: string | null;
   homeroomId: string | null;
@@ -127,7 +129,8 @@ export default function ScheduleBoard(props: BoardProps) {
         )}
         {props.view === 'month' && (
           <MonthView date={props.date} today={props.today} calendar={props.calendar}
-            assignments={props.assignments} events={props.events} onOpenDay={openDay} />
+            assignments={props.assignments} events={props.events} onOpenDay={openDay}
+            canEdit={props.canEditSchedule} onChanged={props.onChanged} />
         )}
       </div>
 
@@ -152,6 +155,7 @@ export default function ScheduleBoard(props: BoardProps) {
           teachers={props.teachers}
           canEditSchedule={props.canEditSchedule}
           onChanged={props.onChanged}
+          viewerId={props.viewerId}
           onOpenEditor={(o) => openEditor(o.date, o)}
           onDelete={(o) => { setSelected(null); setEditor({ date: o.date, occurrence: o, action: 'cancel', remove: true }); }}
           onOpenNotes={() => { setSelected(null); navigate({ page: 'notes' }); }}

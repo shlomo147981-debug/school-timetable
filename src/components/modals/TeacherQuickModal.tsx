@@ -2,10 +2,12 @@
 
 import { useState, useTransition } from 'react';
 import Modal from '../ui/Modal';
-import { addAssignment, reportException } from '@/lib/api';
+import { addAssignment, deleteAssignment, deleteStudentChanges, deleteStudentEvent, reportException, restoreChanges } from '@/lib/api';
+import DeleteButton from '../ui/DeleteButton';
 import { heDate, hhmm } from '@/lib/dates';
 import type { AssignmentType, ExceptionType, Occurrence, Person } from '@/lib/types';
-import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL, cleanNote, isRemovedChange } from '@/lib/types';
+import { ASSIGNMENT_LABEL, CHANGE_LABEL, EXCEPTION_LABEL, EXCEPTION_STATUS_LABEL, cleanNote, isRemovedChange, isSpecialNote } from '@/lib/types';
+import type { StudentChange } from '@/lib/types';
 
 type Tab = 'exception' | 'assignment';
 
@@ -20,12 +22,15 @@ const EXCEPTION_ICONS: Record<ExceptionType, string> = {
  *  3. (מחנך/מנהל) עריכת שיעור: חד-פעמי או קבוע — מקצוע, מורה, שעות, ביטול
  */
 export default function TeacherQuickModal({
-  occurrence: occ, classId, students, preselectedStudentId, teachers, canEditSchedule, onChanged, onOpenEditor, onDelete, onOpenNotes, onClose,
+  occurrence: occ, classId, students, preselectedStudentId, teachers, canEditSchedule, viewerId, onChanged, onOpenEditor, onDelete, onOpenNotes, onClose,
 }: {
   occurrence: Occurrence; classId: string; students: Person[]; preselectedStudentId: string | null;
   teachers: Person[]; canEditSchedule: boolean; onChanged: () => void; onOpenEditor: (o: Occurrence) => void;
   onDelete?: (o: Occurrence) => void; onOpenNotes?: () => void; onClose: () => void;
+  /** המשתמש המחובר — יוצר ההערה/המשימה רשאי למחוק את שלו */
+  viewerId?: string;
 }) {
+  const special = isSpecialNote(occ.change?.note) && occ.status !== 'cancelled' && occ.status !== 'removed';
   const [tab, setTab] = useState<Tab>('exception');
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -99,6 +104,34 @@ export default function TeacherQuickModal({
         </div>
       )}
 
+      {/* אירועים בשיעור: מבחנים / משימות / פעילות מיוחדת — מחנך (או היוצר) יכול למחוק */}
+      {(occ.assignments.length > 0 || (canEditSchedule && special)) && (
+        <section className="mb-3 rounded-lg border border-sky-200 bg-sky-50/60 p-2 text-sm">
+          <div className="mb-1 font-medium">📅 אירועים בשיעור זה</div>
+          <ul className="space-y-1">
+            {canEditSchedule && special && (
+              <li className="flex items-center gap-2 text-xs">
+                <span className="flex-1">✨ פעילות מיוחדת: <b>{occ.subject}</b>{occ.personalOverride ? ' (פרטני)' : ''}</span>
+                <DeleteButton kind="event" details={`פעילות מיוחדת: ${occ.subject} · ${heDate(occ.date, { day: 'numeric', month: 'numeric' })} (השיעור הרגיל יחזור)`}
+                  onDelete={() => (occ.personalOverride && occ.change
+                    ? deleteStudentChanges([(occ.change as StudentChange).id])
+                    : restoreChanges([{ lessonId: occ.lesson.id, date: occ.date }]))}
+                  onDone={() => { onChanged(); onClose(); }} />
+              </li>
+            )}
+            {occ.assignments.map((a) => (
+              <li key={a.id} className="flex items-center gap-2 text-xs">
+                <span className="flex-1">{ASSIGNMENT_LABEL[a.type]}: <b>{a.title}</b></span>
+                {(canEditSchedule || a.created_by === viewerId) && (
+                  <DeleteButton kind="event" details={`${ASSIGNMENT_LABEL[a.type]}: ${a.title} · ${heDate(a.due_date, { day: 'numeric', month: 'numeric' })}`}
+                    onDelete={() => deleteAssignment(a.id)} onDone={onChanged} />
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* הערות ודיווחים של מורים בשיעור הזה — גלוי מיד למחנך */}
       {occ.events.length > 0 && (
         <section className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 p-2 text-sm">
@@ -107,14 +140,23 @@ export default function TeacherQuickModal({
             {onOpenNotes && <button type="button" onClick={onOpenNotes} className="text-xs text-brand-700 underline">לכל ההערות בכיתה ←</button>}
           </div>
           <ul className="space-y-1">
-            {occ.events.map((e) => (
-              <li key={e.id} className={`text-xs ${e.retracted ? 'line-through opacity-60' : ''}`}>
-                <b>{e.student?.full_name ?? students.find((st) => st.id === e.student_id)?.full_name ?? ''}</b>
-                {' · '}{EXCEPTION_LABEL[e.type]}{e.status && ` (${EXCEPTION_STATUS_LABEL[e.status]})`}
-                {e.note && <> — {e.note}</>}
-                {e.reporter && <span className="text-slate-500"> · נרשם ע״י {e.reporter.full_name}</span>}
-              </li>
-            ))}
+            {occ.events.map((e) => {
+              const who = e.student?.full_name ?? students.find((st) => st.id === e.student_id)?.full_name ?? '';
+              return (
+                <li key={e.id} className={`flex items-start gap-2 text-xs ${e.retracted ? 'line-through opacity-60' : ''}`}>
+                  <span className="flex-1">
+                    <b>{who}</b>
+                    {' · '}{EXCEPTION_LABEL[e.type]}{e.status && ` (${EXCEPTION_STATUS_LABEL[e.status]})`}
+                    {e.note && <> — {e.note}</>}
+                    {e.reporter && <span className="text-slate-500"> · נרשם ע״י {e.reporter.full_name}</span>}
+                  </span>
+                  {(canEditSchedule || e.reporter_id === viewerId) && (
+                    <DeleteButton kind="note" details={`${who} · ${EXCEPTION_LABEL[e.type]}${e.note ? ` — ${e.note}` : ''}${e.reporter ? ` (נרשם ע״י ${e.reporter.full_name})` : ''}`}
+                      onDelete={() => deleteStudentEvent(e.id)} onDone={onChanged} />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

@@ -1,16 +1,18 @@
 'use client';
 
-import { SCHOOL_DAYS, monthGrid } from '@/lib/dates';
+import { SCHOOL_DAYS, heDate, monthGrid } from '@/lib/dates';
+import { deleteAssignment, deleteCalendarEvent } from '@/lib/api';
 import type { Assignment, CalendarEvent, StudentEvent } from '@/lib/types';
 import { ASSIGNMENT_LABEL, CALENDAR_LABEL } from '@/lib/types';
-import { eventsOn } from './DayHeaderEvents';
+import { eventDetails, eventsOn } from './DayHeaderEvents';
+import DeleteButton from '../ui/DeleteButton';
 
-/** תצוגת מאקרו: מבחנים, בחנים, משימות, חופשות ואירועים כיתתיים */
+/** תצוגת מאקרו: מבחנים, בחנים, משימות, חופשות ואירועים כיתתיים. מחנך/מנהל: 🗑️ מחיקה */
 export default function MonthView({
-  date, today, calendar, assignments, events, onOpenDay,
+  date, today, calendar, assignments, events, onOpenDay, canEdit = false, onChanged,
 }: {
   date: string; today: string; calendar: CalendarEvent[]; assignments: Assignment[];
-  events: StudentEvent[]; onOpenDay: (d: string) => void;
+  events: StudentEvent[]; onOpenDay: (d: string) => void; canEdit?: boolean; onChanged?: () => void;
 }) {
   const month = date.slice(0, 7);
   return (
@@ -28,25 +30,35 @@ export default function MonthView({
             const praise = exceptions.filter((e) => e.type === 'praise').length;
             const notes = exceptions.length - praise;
             return (
-              <button
+              <div
                 key={d}
-                type="button"
+                role="button"
+                tabIndex={0}
+                aria-label={`פתיחת ${heDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}`}
                 onClick={() => onOpenDay(d)}
-                className={`min-h-24 border-e border-slate-100 p-1.5 text-start align-top last:border-e-0 hover:bg-brand-50 sm:min-h-28 ${inMonth ? '' : 'bg-slate-50/60 text-slate-400'}`}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenDay(d); } }}
+                className={`min-h-24 cursor-pointer border-e border-slate-100 p-1.5 text-start align-top last:border-e-0 hover:bg-brand-50 sm:min-h-28 ${inMonth ? '' : 'bg-slate-50/60 text-slate-400'}`}
               >
                 <div className={`mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${d === today ? 'bg-brand-600 text-white' : ''}`}>
                   {Number(d.slice(8))}
                 </div>
                 <div className="space-y-0.5">
                   {cal.map((e) => (
-                    <div key={e.id} className={`truncate rounded px-1 text-[11px] ${e.kind === 'holiday' ? 'bg-teal-100 text-teal-900' : e.kind === 'trip' ? 'bg-lime-100 text-lime-900' : 'bg-indigo-100 text-indigo-900'}`}>
-                      {CALENDAR_LABEL[e.kind]}: {e.title}
+                    <div key={e.id} className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${e.kind === 'holiday' ? 'bg-teal-100 text-teal-900' : e.kind === 'trip' ? 'bg-lime-100 text-lime-900' : 'bg-indigo-100 text-indigo-900'}`}>
+                      <span className="min-w-0 flex-1 truncate">{CALENDAR_LABEL[e.kind]}: {e.title}</span>
+                      {canEdit && e.class_id && (
+                        <DeleteButton kind="event" compact details={eventDetails(e)} onDelete={() => deleteCalendarEvent(e.id)} onDone={onChanged} />
+                      )}
                     </div>
                   ))}
                   {asg.map((a) => (
                     <div key={a.id} title={a.description ?? a.title}
-                      className={`truncate rounded px-1 text-[11px] ${a.type === 'exam' || a.type === 'quiz' ? 'bg-red-600 text-white' : 'bg-sky-100 text-sky-800'}`}>
-                      {ASSIGNMENT_LABEL[a.type]}: {a.title}
+                      className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${a.type === 'exam' || a.type === 'quiz' ? 'bg-red-600 text-white' : 'bg-sky-100 text-sky-800'}`}>
+                      <span className="min-w-0 flex-1 truncate">{ASSIGNMENT_LABEL[a.type]}: {a.title}</span>
+                      {canEdit && (
+                        <DeleteButton kind="event" compact details={`${ASSIGNMENT_LABEL[a.type]}: ${a.title} · ${heDate(a.due_date, { day: 'numeric', month: 'numeric' })}`}
+                          onDelete={() => deleteAssignment(a.id)} onDone={onChanged} />
+                      )}
                     </div>
                   ))}
                   {(notes > 0 || praise > 0) && (
@@ -56,7 +68,7 @@ export default function MonthView({
                     </div>
                   )}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
