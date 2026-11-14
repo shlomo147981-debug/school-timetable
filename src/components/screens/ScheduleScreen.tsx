@@ -52,7 +52,8 @@ export default function ScheduleScreen({ profile }: { profile: Profile }) {
           loaded = { ctx, occurrences: ctx.studentId ? built : groupPersonal(built, nameOf), calendar, assignments: d.assignments, events: d.events };
         }
         if (!cancelled) setData(loaded);
-      } catch {
+      } catch (err) {
+        console.error("schedule load failed", err);
         if (!cancelled) setError('טעינת המערכת נכשלה. בדקו את החיבור לאינטרנט.');
       } finally {
         if (!cancelled) setLoading(false);

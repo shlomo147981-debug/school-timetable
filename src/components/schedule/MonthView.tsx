@@ -5,7 +5,7 @@ import { SCHOOL_DAYS, heDate, monthGrid } from '@/lib/dates';
 import { deleteAssignment, deleteCalendarEvent } from '@/lib/api';
 import type { Assignment, CalendarEvent, StudentEvent } from '@/lib/types';
 import { ASSIGNMENT_LABEL } from '@/lib/types';
-import { STYLE, eventDetails, eventLabel, eventsOn } from './DayHeaderEvents';
+import { eventDetails, eventLabel, eventStyle, eventsOn, studyTag } from './DayHeaderEvents';
 import CalendarEventDialog from '../modals/CalendarEventDialog';
 import DeleteButton from '../ui/DeleteButton';
 
@@ -20,6 +20,11 @@ export default function MonthView({
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   return (
     <div className="card overflow-hidden">
+      <div className="flex flex-wrap gap-2 border-b border-slate-100 px-3 py-2 text-[11px]" aria-label="מקרא">
+        <span className="rounded bg-teal-100 px-1.5 py-0.5 text-teal-900 ring-1 ring-teal-300">🏖️ חופשה — אין לימודים</span>
+        <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-900">📌 מועד / יום מיוחד — יש לימודים</span>
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-950 ring-1 ring-amber-300">❓ יום בחירה — לבדוק מול בית הספר</span>
+      </div>
       {editing && <CalendarEventDialog event={editing} onClose={() => setEditing(null)} onChanged={() => onChanged?.()} />}
       <div className="grid grid-cols-5 border-b border-slate-200 bg-slate-50 text-center text-sm font-medium">
         {SCHOOL_DAYS.map((d) => <div key={d} className="py-2">{d}</div>)}
@@ -48,7 +53,7 @@ export default function MonthView({
                 </div>
                 <div className="space-y-0.5">
                   {cal.map((e) => (
-                    <div key={e.id} className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${STYLE[e.kind]} ${e.source === 'il-calendar' ? 'font-semibold' : ''}`}>
+                    <div key={e.id} title={[studyTag(e), e.note].filter(Boolean).join(' · ') || undefined} className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${eventStyle(e)} ${e.source === 'il-calendar' ? 'font-semibold' : ''}`}>
                       {canEdit && e.class_id ? (
                         <button type="button" className="min-w-0 flex-1 truncate text-start hover:underline" aria-label={`עריכת אירוע: ${e.title}`}
                           onClick={(ev) => { ev.stopPropagation(); setEditing(e); }}>{eventLabel(e)}</button>

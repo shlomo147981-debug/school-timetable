@@ -52,11 +52,11 @@ export function monthGrid(iso: string): string[][] {
   const month = iso.slice(5, 7);
   const weeks: string[][] = [];
   let start = weekStart(first);
-  while (true) {
-    const week = [0, 1, 2, 3, 4].map((i) => addDays(start, i));
-    if (!week.some((d) => d.slice(5, 7) === month)) break;
-    weeks.push(week);
-    start = addDays(start, 7);
+  // חודש שמתחיל בשישי/שבת: השבוע הראשון (א'–ה') כולו בחודש הקודם — מדלגים עליו ולא עוצרים
+  for (let i = 0; i < 6; i++, start = addDays(start, 7)) {
+    const week = [0, 1, 2, 3, 4].map((d) => addDays(start, d));
+    if (week.some((d) => d.slice(5, 7) === month)) weeks.push(week);
+    else if (weeks.length) break;
   }
   return weeks;
 }
